@@ -87,7 +87,7 @@ if args.zap_file:
 	command.append('-z')
 	if not os.path.isfile(args.zap_file):
 		parser.error('The zap channel file is invalid.')
-	zchan=np.loadtxt(args.zap_file)
+	zchan=np.loadtxt(args.zap_file,dtype=np.int32)
 else:
 	zchan=[]
 #
