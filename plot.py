@@ -16,6 +16,7 @@ parser.add_argument('-p',action='store_true',default=False,dest='profile',help='
 parser.add_argument('-b','--phase_range',default=0,dest='phase',help='limit the phase range, PHASE0,PHASE1')
 parser.add_argument('-r','--frequency_range',default=0,dest='frequency',help='limit the frequency rangeFREQ0,FREQ1')
 parser.add_argument('-s','--subint_range',default=0,dest='subint',help='limit the subint range SUBINT0,SUBINT1')
+parser.add_argument('-n','--polynomial_order',default=0,dest='n',type=int,help='fit the back ground with Nth order polynomial')
 args=(parser.parse_args())
 wn.filterwarnings('ignore')
 #
@@ -90,14 +91,22 @@ fig.set_facecolor('white')
 ax=fig.add_subplot(111)
 if args.fdomain:
 	data=d.period_scrunch(subint_start,subint_end,chan).sum(2)
-	ax.imshow(data,aspect='auto',interpolation='nearest',extent=(0,1,freq_start,freq_end),cmap='jet')
+	if args.n:
+		data-=np.arange(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(chan)).T).T
+	else:
+		data-=data.mean(1).reshape(-1,1)
+	ax.imshow(data[::-1],aspect='auto',interpolation='nearest',extent=(0,1,freq_start,freq_end),cmap='jet')
 	ax.set_xlabel('Pulse Phase',fontsize=15)
 	ax.set_ylabel('Frequency (MHz)',fontsize=15)
 	ax.set_xlim(phase[0],phase[1])
 	ax.set_ylim(frequency[0],frequency[1])
 if args.tdomain:
 	data=d.chan_scrunch(chan,subint_start,subint_end).sum(2)
-	ax.imshow(data,aspect='auto',interpolation='nearest',extent=(0,1,subint_start,subint_end),cmap='jet')
+	if args.n:
+		data-=np.arange(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(chan)).T).T
+	else:
+		data-=data.mean(1).reshape(-1,1)
+	ax.imshow(data[::-1],aspect='auto',interpolation='nearest',extent=(0,1,subint_start,subint_end),cmap='jet')
 	ax.set_xlabel('Pulse Phase',fontsize=15)
 	ax.set_ylabel('Subint Number',fontsize=15)
 	ax.set_xlim(phase[0],phase[1])
