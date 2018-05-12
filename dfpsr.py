@@ -148,6 +148,9 @@ if args.zap_file:
 	if not os.path.isfile(args.zap_file):
 		parser.error('The zap channel file is invalid.')
 	zchan=np.loadtxt(args.zap_file,dtype=np.int32)
+	if np.max(zchan)>=nchan or np.min(zchan)<0:
+		parser.error('The zapped channel number is overrange.')
+	info['zchan']=str(list(zchan))[1:-1]
 else:
 	zchan=[]
 name=args.output

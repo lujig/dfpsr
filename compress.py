@@ -88,6 +88,12 @@ if args.zap_file:
 	if not os.path.isfile(args.zap_file):
 		parser.error('The zap channel file is invalid.')
 	zchan=np.loadtxt(args.zap_file,dtype=np.int32)
+	if np.max(zchan)>=nchan or np.min(zchan)<0:
+		parser.error('The zapped channel number is overrange.')
+	if 'zchan' in info.keys():
+		info['zchan']=str(list(set(map(int,info['zchan'].split(','))).update(zchan)))[1:-1]
+	else:
+		info['zchan']=str(list(zchan))[1:-1]
 else:
 	zchan=[]
 #
@@ -113,6 +119,12 @@ else:
 #
 d1.write_shape([nchan_new,nsub_new,nbin_new,1])
 #
+def shift(y,x):
+	fftp=fft.rfft(y)
+	ffts=fftp*np.exp(x*1j*np.arange(len(fftp)))
+	fftr=fft.irfft(ffts)
+	return fftr
+#
 res=nchan
 tpdata=np.zeros([nperiod,nbin])
 i_new=0
@@ -128,13 +140,13 @@ for i in np.arange(nchan):
 			continue
 		tpdata+=d.read_chan(i)[:,:,0]*(res*1.0/nchan)
 		if nsub_new!=nperiod:
-			tpdata=fft.rfft(tpdata,axis=0)
+			tpdata=fft.rfft(tpdata,axis=0)*np.exp(-(0.5/nsub_new-0.5/nperiod)*1j*np.arange(nperiod/2+1)).reshape(-1,1)
 			if 2*nsub_new>=nperiod:
 				tpdata=fft.irfft(np.concatenate((tpdata,np.zeros([nsub_new+1-tpdata.shape[0],nbin])),axis=0),axis=0).reshape(nsub_new,2,nbin).sum(1)
 			else:
 				tpdata=fft.irfft(tpdata[:(nsub_new+1),:],axis=0).reshape(nsub_new,2,nbin).sum(1)
 		if nbin_new!=nbin:
-			tpdata=fft.rfft(tpdata,axis=1)
+			tpdata=fft.rfft(tpdata,axis=1)*np.exp(-(0.5/nbin_new-0.5/nbin)*1j*np.arange(nbin/2+1))
 			if 2*nbin_new>=nbin:
 				tpdata=fft.irfft(np.concatenate((tpdata,np.zeros([nsub_new,nbin_new+1-tpdata.shape[1]])),axis=1),axis=1).reshape(nsub_new,nbin_new,2).sum(2)
 			else:
@@ -144,8 +156,6 @@ for i in np.arange(nchan):
 		tpdata=d.read_chan(i)[:,:,0]*((nchan_new-res)*1.0/nchan)
 		res=nchan
 #
-stt_time=np.float64(info['stt_time'])
-info['stt_time']=stt_time-np.float64(info['period'])*(0.5/nbin_new-0.5/nbin)/86400.0
 info['nchan_new']=nchan_new
 info['nsub_new']=nsub_new
 info['nbin_new']=nbin_new
