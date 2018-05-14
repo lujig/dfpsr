@@ -4,6 +4,7 @@ import numpy.fft as fft
 import numpy.polynomial.chebyshev as nc
 import argparse as ap
 import os,time,ld
+import threading
 try:
 	import astropy.io.fits as ps
 except:
@@ -25,6 +26,7 @@ parser.add_argument("-b","--nbin",dest="nbin",default=0,type=int,help="number of
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
 parser.add_argument("-r","--reverse",action="store_true",default=False,help="reverse the band")
 parser.add_argument("-t","--test",action="store_true",default=False,help="generate a subint scrunched test datafile test.npy to help in judging noisy channel")
+parser.add_argument("-m","--multithreading",dest='threads',default=1,type=int,help="deal with multi threading")
 args=(parser.parse_args())
 command=['dfpsr.py']
 #
@@ -226,6 +228,11 @@ else:
 	#
 	polyco=open(predictor_file,'r')
 	lines=polyco.readlines()
+	polyco.close()
+	os.remove(predictor_file)
+	os.remove('pred.tim')
+	if not args.par_file:
+		os.remove(par_file)
 	coeff=[]
 	predictor=[]
 	for line in lines:
@@ -288,21 +295,50 @@ binint=binint[:-1].reshape(-1,temp_multi).sum(1)
 binint[binint==0]=1
 #
 d.write_shape([nchan_new,nperiod,nbin,1])
-for k in np.arange(nchan_new):
-	if k in zchan:
-		d.write_chan(np.zeros(totalbin/temp_multi),k)
-		continue
-	data=np.zeros(nbin01)
-	data[:nbin_old]=d.__read_chan0__(k,ndata_chan0=nbin_old)
-	ddata=np.float64(shift(data,disp[k])[:nbin0])[judge0:judge1]
-	tpdata=np.zeros(totalbin+1)
-	tpdata[phasenum]=ddata*(1-phaseres)
-	tpdata[phasenum+1]+=ddata*phaseres
-	tpdata=tpdata[:-1].reshape(-1,temp_multi).sum(1)/binint
-	d.write_chan(tpdata,k)
+t=time.time()
+if args.threads<=0:
+	parser.error('Threads number should be positive.')
+elif args.threads==1:
+	for k in np.arange(nchan_new):
+		if k in zchan:
+			d.write_chan(np.zeros(totalbin/temp_multi),k)
+			continue
+		data=np.zeros(nbin01)
+		data[:nbin_old]=d.__read_chan0__(k,ndata_chan0=nbin_old)
+		ddata=np.float64(shift(data,disp[k])[:nbin0])[judge0:judge1]
+		tpdata=np.zeros(totalbin+1)
+		tpdata[phasenum]=ddata*(1-phaseres)
+		tpdata[phasenum+1]+=ddata*phaseres
+		tpdata=tpdata[:-1].reshape(-1,temp_multi).sum(1)/binint
+		d.write_chan(tpdata,k)
+else:
+	np.save(name+'_df_assist_temp',{'nchan_new':nchan_new,'zchan':zchan,'totalbin':totalbin,'temp_multi':temp_multi,'nbin0':nbin0,'nbin01':nbin01,'nbin_old':nbin_old,'disp':disp,'judge0':judge0,'judge1':judge1,'phasenum':phasenum,'phaseres':phaseres,'binint':binint})
+	if nchan_new<args.threads:
+		threads=nchan_new
+		start_list=np.arange(0,nchan_new)
+		len_list=np.ones(threads)
+	elif nchan_new%args.threads==0:
+		threads=args.threads
+		space=nchan_new/threads
+		start_list=np.arange(0,nchan_new,space)
+		len_list=np.int32(np.ones(threads))*space
+	else:
+		space=nchan_new/args.threads+1
+		threads=nchan_new/space+1
+		start_list=np.arange(0,nchan_new,space)
+		len_list=np.int32(np.ones(threads))*space
+		len_list[-1]-=space*threads-nchan_new
+	def df(i):
+		os.system('python df_assist.py -s '+str(start_list[i])+' -n '+str(len_list[i])+' '+name)
+	thlist=[]
+	testlist=[]
+	for i in np.arange(threads):
+		th=threading.Thread(target=df, args=(i,))
+		thlist.append(th)
+		th.start()
+	for i in thlist:
+		i.join()
+	os.remove(name+'_df_assist_temp.npy')
 d.write_info(info)
 #
-os.remove('t2pred.dat')
-os.remove('pred.tim')
-if not args.par_file:
-	os.remove(par_file)
+

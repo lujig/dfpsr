@@ -1,12 +1,13 @@
 import numpy as np
 import numpy.ma as ma
+import numpy.fft as fft
 import argparse as ap
 from matplotlib.figure import Figure
 import matplotlib.lines as ln
 import ld,os,copy
 #
 version='JigLu_20180511'
-parser=ap.ArgumentParser(prog='plot',description='Plot the ld file.',epilog='Ver '+version)
+parser=ap.ArgumentParser(prog='ldzap',description='Zap the frequency domain interference in ld file.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("filename",help="input ld file")
 args=(parser.parse_args())
@@ -25,7 +26,8 @@ else:
 	nchan=int(info['nchan'])
 	nbin=int(info['nbin'])
 	nperiod=int(info['nperiod'])
-if data.shape[1]>128: data=data.reshape(data.shape[0],128,-1).sum(2)
+if data.shape[1]>128:
+	data=fft.irfft(fft.rfft(data,axis=1)[:,:65],axis=1)
 testdata=copy.deepcopy(data)
 testdata=ma.masked_where(testdata<0,testdata)
 if 'zchan' in info.keys():
@@ -75,7 +77,6 @@ ax=fig.add_axes([x0,y0,x1-x0,y1-y0])
 ax1=fig.add_axes([x1,y0,x2-x1,y1-y0])
 ylim=0
 ylimlist=[]
-#info['zchan']=str(list(set(map(int,info['zchan'].split(','))).update(zchan)))[1:-1]
 l1 = ln.Line2D([0,1],[0.5,0.5],color='k',transform=fig.transFigure,figure=fig)
 fig.lines.append(l1)
 #
@@ -200,27 +201,38 @@ def keymotion(a):
 			zaplist.pop()
 		else: return
 		update_image()
+	elif a=='h':
+		print "\nldzap interactive commands\n"
+		print "Mouse:"
+		print "  Left-click selects the start of a range"
+		print "    then left-click again to zoom, or right-click to zap."
+		print "  Right-click zaps current cursor location.\n"
+		print "Keyboard:"
+		print "  h  Show this help"
+		print "  u  Undo last zap command"
+		print "  r  Reset zoom and update dynamic spectrum"
+		print "  s  Save zapped version as (filename)_zap.ld and quit"
+		print "  q  Exit program\n"
 #
-try:
-	from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-	import Tkinter as tk
-	import matplotlib as mpl
-	mpl.use('TkAgg')
-	root=tk.Tk()
-	root.title(args.filename)
-	root.geometry('800x600+100+100')
-	canvas=FigureCanvasTkAgg(fig,master=root)
-	canvas.get_tk_widget().grid()  
-	canvas.get_tk_widget().pack(fill='both')
-	root.bind('<KeyPress>',press_tk)
-	root.bind('<ButtonPress-1>',leftclick)
-	root.bind('<ButtonPress-3>',rightclick)
-	root.bind('<Motion>',move_tk)
-	canvas.draw()
-	root.mainloop()
-	plotimage(ylim0)
-except:
-	raise(Exception,"Only Tkinter available for this programme.")
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import Tkinter as tk
+import matplotlib as mpl
+mpl.use('TkAgg')
+root=tk.Tk()
+root.title(args.filename)
+root.geometry('800x600+100+100')
+canvas=FigureCanvasTkAgg(fig,master=root)
+canvas.get_tk_widget().grid()  
+canvas.get_tk_widget().pack(fill='both')
+root.bind('<KeyPress>',press_tk)
+root.bind('<ButtonPress-1>',leftclick)
+root.bind('<ButtonPress-3>',rightclick)
+root.bind('<Motion>',move_tk)
+canvas.draw()
+plotimage(ylim0)
+root.mainloop()
+#except:
+	#raise(Exception,"Only Tkinter available for this programme.")
 	#import gtk
 	#from matplotlib.backends.backend_gtkagg import FigureCanvasGTKAgg
 	#root=gtk.Window()

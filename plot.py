@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import numpy as np
+import numpy.ma as ma
 from matplotlib.figure import Figure
 import argparse as ap
 import os,time,ld
@@ -90,6 +91,14 @@ fig.set_facecolor('white')
 ax=fig.add_subplot(111)
 if args.fdomain:
 	data=d.period_scrunch(subint_start,subint_end,chan).sum(2)
+	if 'zchan' in info.keys():
+		if len(chan):
+			zchan=np.array(list(set(np.int32(info['zchan'].split(','))).intersection(chan)))-chanstart
+		else:
+			zchan=np.int32(info['zchan'].split(','))
+		zaparray=np.zeros_like(data)
+		zaparray[zchan]=True
+		data==ma.masked_array(data,mask=zaparray)
 	if args.n:
 		data-=np.arange(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(chan)).T).T
 	else:
@@ -112,13 +121,14 @@ if args.tdomain:
 	ax.set_ylim(subint[0],subint[1])
 if args.profile:
 	data=d.chan_scrunch(chan,subint_start,subint_end).sum(2).sum(0)
+	if args.n:
+		data-=np.arange(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(chan)).T).T
 	low=min(data)*1.1-max(data)*0.1
 	high=max(data)*1.1-min(data)*0.1
 	x=np.linspace(0,1,nbin)
 	ax.plot(x,data,'k-')
 	ax.set_xlabel('Pulse Phase',fontsize=15)
 	ax.set_ylabel('Flux (Arbitrary Unit)',fontsize=15)
-	ax.set_yticks([])
 	ax.set_xlim(phase[0],phase[1])
 	ax.set_ylim(low,high)
 try:
