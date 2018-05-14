@@ -329,7 +329,10 @@ else:
 		len_list=np.int32(np.ones(threads))*space
 		len_list[-1]-=space*threads-nchan_new
 	def df(i):
-		os.system('python df_assist.py -s '+str(start_list[i])+' -n '+str(len_list[i])+' '+name)
+		if os.path.isfile('df_assist.py'):
+			os.system('python df_assist.py -s '+str(start_list[i])+' -n '+str(len_list[i])+' '+name)
+		else:
+			os.system('df_assist.py -s '+str(start_list[i])+' -n '+str(len_list[i])+' '+name)
 	thlist=[]
 	testlist=[]
 	for i in np.arange(threads):
