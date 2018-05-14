@@ -98,9 +98,9 @@ if args.fdomain:
 			zchan=np.int32(info['zchan'].split(','))
 		zaparray=np.zeros_like(data)
 		zaparray[zchan]=True
-		data==ma.masked_array(data,mask=zaparray)
+		data=ma.masked_array(data,mask=zaparray)
 	if args.n:
-		data-=np.arange(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(chan)).T).T
+		data-=np.polyval(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(data)).T).T
 	else:
 		data-=data.mean(1).reshape(-1,1)
 	ax.imshow(data[::-1],aspect='auto',interpolation='nearest',extent=(0,1,freq_start,freq_end),cmap='jet')
@@ -111,7 +111,7 @@ if args.fdomain:
 if args.tdomain:
 	data=d.chan_scrunch(chan,subint_start,subint_end).sum(2)
 	if args.n:
-		data-=np.arange(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(chan)).T).T
+		data-=np.polyval(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(data)).T).T
 	else:
 		data-=data.mean(1).reshape(-1,1)
 	ax.imshow(data[::-1],aspect='auto',interpolation='nearest',extent=(0,1,subint_start,subint_end),cmap='jet')
@@ -122,7 +122,24 @@ if args.tdomain:
 if args.profile:
 	data=d.chan_scrunch(chan,subint_start,subint_end).sum(2).sum(0)
 	if args.n:
-		data-=np.arange(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(chan)).T).T
+		data-=np.polyval(np.polyfit(np.arange(nbin),data,args.n),np.arange(nbin))
+	bins,mn=10,nbin/10
+	stat,val,tmp=ax.hist(data,bins)
+	while stat.max()>mn and 2*bins<mn:
+		bins*=2
+		stat,val,tmp=ax.hist(data,bins)
+	val=(val[1:]+val[:-1])/2.0
+	argmaxstat=np.argmax(stat)
+	if argmaxstat==0:
+		base=val[0]
+	elif argmaxstat==1:
+		poly=np.polyfit(val[:3],stat[:3],2)
+		base=-poly[1]/poly[0]/2.0
+	else:
+		poly=np.polyfit(val[(argmaxstat-2):(argmaxstat+3)],stat[(argmaxstat-2):(argmaxstat+3)],2)
+		base=-poly[1]/poly[0]/2.0
+	data-=base
+	data/=np.max(data)
 	low=min(data)*1.1-max(data)*0.1
 	high=max(data)*1.1-min(data)*0.1
 	x=np.linspace(0,1,nbin)
