@@ -94,6 +94,8 @@ if args.zap_file:
 		info['zchan']=str(list(set(map(int,info['zchan'].split(','))).update(zchan)))[1:-1]
 	else:
 		info['zchan']=str(list(zchan))[1:-1]
+	if nchan_new!=nchan:
+		info.pop('zchan')
 else:
 	zchan=[]
 #
