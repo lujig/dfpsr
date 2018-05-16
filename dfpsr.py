@@ -102,8 +102,8 @@ info={'nbin_origin':nbin,'telename':telename,'freq_start':freq_start,'freq_end':
 if args.psr_name and args.par_file:
 	parser.error('At most one of flags -n and -p is required.')
 elif args.psr_name or args.par_file:
-	if args.dm or args.period:
-		parser.error('With pulsar name or ephemeris, dm or period is needless.')
+	if args.period:
+		parser.error('With pulsar name or ephemeris, period is needless.')
 	elif args.psr_name:
 		command.append('-n '+args.psr_name)
 		psr_name=args.psr_name
@@ -129,7 +129,10 @@ elif args.psr_name or args.par_file:
 		elif elements[0]=='F0':
 			period=1./np.float64(elements[1])
 		elif elements[0]=='DM':
-			dm=np.float64(elements[1])
+			if not args.dm:
+				dm=np.float64(elements[1])
+			else:
+				dm=args.dm
 else:
 	if not (args.dm or args.period):
 		parser.error('Pulsar Parameter should be provided.')

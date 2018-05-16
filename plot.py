@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 import numpy as np
 import numpy.ma as ma
+import numpy.fft as fft
 from matplotlib.figure import Figure
 import argparse as ap
 import os,time,ld
 import warnings as wn
 #
 version='JigLu_20180508'
-parser=ap.ArgumentParser(prog='plot',description='Plot the ld file.',epilog='Ver '+version)
+parser=ap.ArgumentParser(prog='plot',description='Plot the ld file. Press \'s\' in figure window to save figure.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("filename",help="input ld file")
 parser.add_argument('-f',action='store_true',default=False,dest='fdomain',help='show the frequency domain image')
@@ -16,7 +17,10 @@ parser.add_argument('-p',action='store_true',default=False,dest='profile',help='
 parser.add_argument('-b','--phase_range',default=0,dest='phase',help='limit the phase range, PHASE0,PHASE1')
 parser.add_argument('-r','--frequency_range',default=0,dest='frequency',help='limit the frequency rangeFREQ0,FREQ1')
 parser.add_argument('-s','--subint_range',default=0,dest='subint',help='limit the subint range SUBINT0,SUBINT1')
-parser.add_argument('-n','--polynomial_order',default=0,dest='n',type=int,help='fit the back ground with Nth order polynomial')
+parser.add_argument('-o','--polynomial_order',default=0,dest='n',type=int,help='fit the back ground with Nth order polynomial')
+parser.add_argument('-c','--rotation',default=0,dest='rotation',type=np.float64,help='rotate the plot phase')
+parser.add_argument('-n',action='store_true',default=False,dest='norm',help='normalized the data at each channel or subint')
+parser.add_argument('-i',action='store_false',default=True,dest='title',help='hide file information above the figure')
 args=(parser.parse_args())
 wn.filterwarnings('ignore')
 #
@@ -35,6 +39,7 @@ else:
 freq_start=np.float64(info['freq_start'])
 freq_end=np.float64(info['freq_end'])
 freq=(freq_start+freq_end)/2.0
+bw=freq_end-freq_start
 channel_width=(freq_end-freq_start)/nchan
 #
 plotflag=np.sum(map(np.bool,[args.fdomain,args.tdomain,args.profile]))
@@ -42,11 +47,6 @@ if plotflag>1:
 	parser.error('At most one of flags -f, -t and -p is required.')
 elif plotflag==0:
 	parser.error('At least one of flags -f, -t and -p is required.')
-#
-if args.phase:
-	phase=np.float64(args.phase.split(','))
-else:
-	phase=np.arange(2)
 #
 if args.frequency:
 	frequency=np.float64(args.frequency.split(','))
@@ -86,9 +86,15 @@ if args.phase:
 else:
 	phase=np.array([0,1])
 #
-fig=Figure(figsize=(40,30))
+def shift(y,x):
+	fftp=fft.rfft(y)
+	ffts=fftp*np.exp(-2*np.pi*x*1j*np.arange(np.shape(fftp)[-1]))
+	fftr=fft.irfft(ffts)
+	return fftr
+#
+fig=Figure(figsize=(40,30),dpi=80)
 fig.set_facecolor('white')
-ax=fig.add_subplot(111)
+ax=fig.add_axes([0.12,0.1,0.82,0.83])
 if args.fdomain:
 	data=d.period_scrunch(subint_start,subint_end,chan).sum(2)
 	if 'zchan' in info.keys():
@@ -103,22 +109,28 @@ if args.fdomain:
 		data-=np.polyval(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(data)).T).T
 	else:
 		data-=data.mean(1).reshape(-1,1)
+	if args.norm:
+		data/=data.max(1).reshape(-1,1)
+	if args.rotation:
+		data=shift(data,args.rotation)
 	ax.imshow(data[::-1],aspect='auto',interpolation='nearest',extent=(0,1,freq_start,freq_end),cmap='jet')
-	ax.set_xlabel('Pulse Phase',fontsize=15)
-	ax.set_ylabel('Frequency (MHz)',fontsize=15)
-	ax.set_xlim(phase[0],phase[1])
+	ax.set_ylabel('Frequency (MHz)',fontsize=30)
 	ax.set_ylim(frequency[0],frequency[1])
+	texty=frequency[1]*1.01-frequency[0]*0.01
 if args.tdomain:
 	data=d.chan_scrunch(chan,subint_start,subint_end).sum(2)
 	if args.n:
 		data-=np.polyval(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(data)).T).T
 	else:
 		data-=data.mean(1).reshape(-1,1)
+	if args.norm:
+		data/=data.max(1).reshape(-1,1)
+	if args.rotation:
+		data=shift(data,args.rotation)
 	ax.imshow(data[::-1],aspect='auto',interpolation='nearest',extent=(0,1,subint_start,subint_end),cmap='jet')
-	ax.set_xlabel('Pulse Phase',fontsize=15)
-	ax.set_ylabel('Subint Number',fontsize=15)
-	ax.set_xlim(phase[0],phase[1])
+	ax.set_ylabel('Subint Number',fontsize=30)
 	ax.set_ylim(subint[0],subint[1])
+	texty=subint[1]*1.01-subint[0]*0.01
 if args.profile:
 	data=d.chan_scrunch(chan,subint_start,subint_end).sum(2).sum(0)
 	if args.n:
@@ -140,14 +152,33 @@ if args.profile:
 		base=-poly[1]/poly[0]/2.0
 	data-=base
 	data/=np.max(data)
+	if args.rotation:
+		data=shift(data,args.rotation)
 	low=min(data)*1.1-max(data)*0.1
 	high=max(data)*1.1-min(data)*0.1
-	x=np.linspace(0,1,nbin)
+	x=np.linspace(0,1,len(data))
 	ax.plot(x,data,'k-')
-	ax.set_xlabel('Pulse Phase',fontsize=15)
-	ax.set_ylabel('Flux (Arbitrary Unit)',fontsize=15)
-	ax.set_xlim(phase[0],phase[1])
+	ax.set_ylabel('Flux (Arbitrary Unit)',fontsize=30)
 	ax.set_ylim(low,high)
+	texty=high*1.01-low*0.01
+#
+ax.set_xlabel('Pulse Phase',fontsize=30)
+ax.set_xlim(phase[0],phase[1])
+if ax.title:
+	ax.text(0.0,texty,'Freq: '+str(np.round(freq,1))+' BW: '+str(np.round(bw,1)),horizontalalignment='left',verticalalignment='bottom',fontsize=15)
+	ax.text(1.0,texty,'Length: '+str(np.round(np.float64(info['length']),1)),horizontalalignment='right',verticalalignment='bottom',fontsize=15)
+	if 'psr_name' in info.keys():
+		ax.text(0.5,texty,info['psr_name'],horizontalalignment='center',verticalalignment='bottom',fontsize=20)
+	else:
+		ax.text(0.5,texty,args.filename,horizontalalignment='center',verticalalignment='bottom',fontsize=20)		
+#
+def save_fig():
+	figname=raw_input("Please input figure name:")
+	if figname.split('.')[-1] not in ['ps','eps','png','pdf','pgf']:
+		figname+='.pdf'
+	fig.savefig(figname)
+	print 'Figure file',figname,'has been saved.'
+#
 try:
 	import gtk
 	from matplotlib.backends.backend_gtkagg import FigureCanvasGTKAgg
@@ -161,12 +192,18 @@ try:
 	window.modify_bg('normal',gtk.gdk.Color('#fff'))
 	window.show_all()
 	window.connect('destroy',gtk.main_quit)
+	def save_gtk(window,event):
+		if gtk.gdk.keyval_name(event.keyval)=='s':
+			save_fig()
+	window.connect('key-press-event',save_gtk)
 	gtk.main()
 except:
 	import matplotlib as mpl
 	from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 	import Tkinter as tk
 	mpl.use('TkAgg')
+	ax.tick_params(axis='x',labelsize=15)
+	ax.tick_params(axis='y',labelsize=15)
 	root=tk.Tk()
 	root.title(args.filename)
 	root.geometry('800x600+100+100')
@@ -174,4 +211,8 @@ except:
 	canvas.get_tk_widget().grid()
 	canvas.get_tk_widget().pack(fill='both')
 	canvas.show()
+	def save_tk(event):
+		if event.keysym=='s':
+			save_fig()
+	root.bind('<KeyPress>',save_tk)
 	root.mainloop()
