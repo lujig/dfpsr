@@ -95,6 +95,7 @@ def shift(y,x):
 fig=Figure(figsize=(40,30),dpi=80)
 fig.set_facecolor('white')
 ax=fig.add_axes([0.12,0.1,0.82,0.83])
+ax.patch.set_facecolor('w')
 if args.fdomain:
 	data=d.period_scrunch(subint_start,subint_end,chan).sum(2)
 	if 'zchan' in info.keys():
@@ -164,7 +165,7 @@ if args.profile:
 #
 ax.set_xlabel('Pulse Phase',fontsize=30)
 ax.set_xlim(phase[0],phase[1])
-if ax.title:
+if args.title:
 	ax.text(0.0,texty,'Freq: '+str(np.round(freq,1))+' BW: '+str(np.round(bw,1)),horizontalalignment='left',verticalalignment='bottom',fontsize=15)
 	ax.text(1.0,texty,'Length: '+str(np.round(np.float64(info['length']),1)),horizontalalignment='right',verticalalignment='bottom',fontsize=15)
 	if 'psr_name' in info.keys():

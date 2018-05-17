@@ -77,6 +77,8 @@ x0,x1,x2=0.13,0.8,0.95
 y0,y1=0.11,0.96
 ax=fig.add_axes([x0,y0,x1-x0,y1-y0])
 ax1=fig.add_axes([x1,y0,x2-x1,y1-y0])
+ax.patch.set_facecolor('w')
+ax1.patch.set_facecolor('w')
 ylim=0
 ylimlist=[]
 l1 = ln.Line2D([0,1],[0.5,0.5],color='k',transform=fig.transFigure,figure=fig)
