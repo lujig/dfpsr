@@ -195,7 +195,7 @@ if args.test:
 	test=ld.ld('test.ld')
 	test.write_shape([nchan_new,1,nsblk,1])
 	test.write_period(testdata,0)
-	testinfo={'nbin':nbin,'test':True,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart}
+	testinfo={'nbin_origin':nbin,'test':True,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart}
 	test.write_info(testinfo)
 #
 command=' '.join(command)
