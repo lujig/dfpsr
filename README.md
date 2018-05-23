@@ -24,7 +24,12 @@ plot.py:
 ldzap.py:
 	Zap the frequency domain interference in ld file.
 
-	ldzap.py filename
+	ldzap.py [-r FREQUENCY] [-s SUBINT] [-n] [-d DM] [-z ZONE] filename
+
+lddm.py:
+	Calculate the best DM value for ld file.
+
+	lddm.py filename
 
 ld.py:
 	Provide some functions to access ld format data. With these functions, one can read data and information of ld file, or write data and information in a ld file.
