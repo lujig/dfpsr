@@ -26,7 +26,10 @@ if 'compressed' in info.keys():
 else:
 	nchan=int(info['nchan'])
 	nbin=int(info['nbin'])
-	nperiod=int(info['nperiod'])
+	if 'test' in info.keys():
+		nperiod=1
+	else:
+		nperiod=int(info['nperiod'])
 if data.shape[1]>128:
 	data=fft.irfft(fft.rfft(data,axis=1)[:,:65],axis=1)
 testdata=copy.deepcopy(data)
