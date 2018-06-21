@@ -144,7 +144,7 @@ if args.profile:
 	val=(val[1:]+val[:-1])/2.0
 	argmaxstat=np.argmax(stat)
 	if argmaxstat==0:
-		base=val[0]
+		base=data[(data>(val[1]*-0.5+val[0]*1.5))&(data<(val[1]*0.5+val[0]*0.5))].mean()
 	elif argmaxstat==1:
 		poly=np.polyfit(val[:3],stat[:3],2)
 		base=-poly[1]/poly[0]/2.0

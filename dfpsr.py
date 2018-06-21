@@ -16,7 +16,7 @@ parser=ap.ArgumentParser(prog='dfpsr',description='Dedisperse and Fold the psrfi
 parser.add_argument('-v','--version', action='version', version=version)
 parser.add_argument("filename",nargs='+',help="name of file or filelist")
 parser.add_argument("-o","--output",dest="output",default="psr",help="output file name")
-parser.add_argument("-f","--frequency",dest='freqrange',default="250,800",help="output frequency range (MHz) in form start_freq,end_freq")
+parser.add_argument("-f","--frequency",dest='freqrange',default=0,help="output frequency range (MHz) in form start_freq,end_freq")
 parser.add_argument('-d','--dm',dest='dm',default=0,type=np.float64,help="dispersion measure")
 parser.add_argument('-p','--period',dest='period',default=0,type=np.float64,help="dispersion measure")
 parser.add_argument('-n','--pulsar_name',default=0,dest='psr_name',help='input pulsar name')
@@ -51,7 +51,7 @@ for i in np.arange(filenum):
 		npol=subint_header['NPOL']
 		nchan=head['OBSNCHAN']
 		freq=head['OBSFREQ']
-		bandwidth=head['OBSBW']
+		bandwidth=subint_header['NCHAN']*subint_header['CHAN_BW']
 		tsamp=subint_header['TBIN']
 		nsblk=subint_header['NSBLK']
 	else:
@@ -63,11 +63,13 @@ for i in np.arange(filenum):
 			# file_error('number of channels')
 		if freq!=head['OBSFREQ']:
 			file_error('central frequency')
-		elif bandwidth!=head['OBSBW']:
+		elif bandwidth!=subint_header['NCHAN']*subint_header['CHAN_BW']:
 			file_error('bandwidth')
 		elif tsamp!=subint_header['TBIN']:
 			file_error('sampling time')
 		#
+	bw_sign=(bandwidth>0)
+	bandwidth=np.abs(bandwidth)
 	stt_imjd=head['STT_IMJD']
 	stt_smjd=head['STT_SMJD']
 	stt_offs=head['STT_OFFS']
@@ -85,17 +87,20 @@ if len(file_len)>1:
 	if np.max(np.abs((file_len*tsamp/86400.0+file_t0)[:-1]-file_t0[1:]))>(tsamp/86400.0):
 		parser.error("Files are not continuous.")
 #
-command.append('-f '+args.freqrange)
-freq_start,freq_end=np.float64(args.freqrange.split(','))
-if freq_start>freq_end:
-	parser.error("Starting frequency larger than ending frequency.")
-elif freq_start<(freq-bandwidth/2.0) or freq_end>(freq+bandwidth/2.0):
-	parser.error("Input frequency is overrange.")
+channel_width=bandwidth*1.0/nchan
+if args.freqrange:
+	command.append('-f '+args.freqrange)
+	freq_start,freq_end=np.float64(args.freqrange.split(','))
+	chanstart,chanend=np.int16(np.round((np.array([freq_start,freq_end])-freq)/channel_width+0.5*nchan))
+	if freq_start>freq_end:
+		parser.error("Starting frequency larger than ending frequency.")
+	elif freq_start<(freq-bandwidth/2.0) or freq_end>(freq+bandwidth/2.0):
+		parser.error("Input frequency is overrange.")
+else:
+	chanstart,chanend=0,nchan
 #
 nbin=file_len.sum()
 stt_time=file_t0[0]
-channel_width=bandwidth*1.0/nchan
-chanstart,chanend=np.int16(np.round((np.array([freq_start,freq_end])-freq)/channel_width+0.5*nchan))
 freq_start,freq_end=(np.array([chanstart,chanend])-0.5*nchan)*channel_width+freq
 info={'nbin_origin':nbin,'telename':telename,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart,'tsamp_origin':tsamp,'stt_time_origin':stt_time,'stt_time':stt_time,'npol':npol}
 #
@@ -177,11 +182,14 @@ if args.test:
 cumsub=0
 for n in np.arange(filenum):
 	f=ps.open(filelist[n],mmap=True)
-	fsub=f[1].header['naxis2']
+	fsub=f['SUBINT'].header['naxis2']
 	for i in np.arange(fsub):
-		data=(np.int16(f['SUBINT'].data[i]['DATA'].reshape(nsblk,2,nchan).sum(1)).transpose())
-		if args.reverse:
-			data=data[(nchan-chanstart-1):(nchan-chanend-1):-1,:]
+		data=(np.int16(f['SUBINT'].data[i]['DATA'].reshape(nsblk,npol,nchan).sum(1)).transpose())
+		if args.reverse or (not bw_sign):
+			if nchan==chanend:
+				data=data[(nchan-chanstart-1)::-1,:]
+			else:
+				data=data[(nchan-chanstart-1):(nchan-chanend-1):-1,:]
 			command.append('-r')
 		else:
 			data=data[chanstart:chanend,:]
@@ -189,7 +197,7 @@ for n in np.arange(filenum):
 		if args.test:
 			testdata+=data
 		cumsub+=1
-		del f[1].data
+		del f['SUBINT'].data
 	f.close()
 if args.test:
 	test=ld.ld('test.ld')
@@ -207,7 +215,8 @@ freq0=freq_start+channel_width/2.0
 freq1=freq_end-channel_width/2.0
 nbin0=nbin-np.int32(np.ceil((1/freq0**2-1/freq1**2)*dm*4148.808/tsamp)+1)
 info['stt_time']-=1/freq1**2*dm*4148.808/tsamp/86400.0
-disp=1/np.linspace(freq0,freq1,nchan_new)**2*dm*4148.808/tsamp*np.pi*2.0/nbin01
+disp_time=1/np.linspace(freq0,freq1,nchan_new)**2*dm*4148.808
+disp=disp_time/tsamp*np.pi*2.0/nbin01
 disp=disp-np.min(disp)
 def shift(y,x):
 	fftp=fft.rfft(y)
@@ -257,7 +266,7 @@ else:
 	coeff=np.array(coeff)
 	coeff[0,:]/=2.0
 	coeff[:,0]/=2.0
-	dt=((np.arange(nbin0)+0.5)*tsamp/86400+info['stt_time']-t0)/(t1-t0)*2-1
+	dt=(((np.arange(nbin0)+0.5)*tsamp-np.min(disp_time))/86400+info['stt_time']-t0)/(t1-t0)*2-1
 	phase=nc.chebval(dt,coeff[:,0])
 	phase0=np.ceil(phase[0])
 	nperiod=int(np.floor(phase[-1]-phase0))
