@@ -126,6 +126,7 @@ elif args.psr_name or args.par_file:
 		par_file.close()
 		par_file=args.par_file
 	info['psr_par']=psr_par
+	pepoch=False
 	for line in psr_par:
 		elements=line.split()
 		if elements[0]=='PSRJ':
@@ -138,6 +139,8 @@ elif args.psr_name or args.par_file:
 				dm=np.float64(elements[1])
 			else:
 				dm=args.dm
+		elif elements[0]=='PEPOCH':
+			pepoch=True
 else:
 	if not (args.dm or args.period):
 		parser.error('Pulsar Parameter should be provided.')
@@ -229,8 +232,9 @@ end_time=stt_time+tsamp*nbin0/86400.0+60./86400
 stt_time-=60./86400
 stt_time=str(int(stt_time))+str(stt_time%1)[1:]
 end_time=str(int(end_time))+str(end_time%1)[1:]
-if args.period:
-	period=args.period
+if args.period or (not pepoch):
+	if args.period:
+		period=args.period
 	phase=np.arange(nbin0)*tsamp/period
 	info['phase0']=0
 	nperiod=int(np.ceil(np.max(phase)))
