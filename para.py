@@ -3,7 +3,7 @@ import numpy as np
 import argparse as ap
 import os,time,ld
 #
-version='JigLu_20180507'
+version='JigLu_20180804'
 parser=ap.ArgumentParser(prog='para',description='Show the parameters of ld file.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("filename",help="input ld file")

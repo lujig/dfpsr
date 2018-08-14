@@ -180,7 +180,7 @@ d.write_shape([nchan_new,nbin/nsblk,nsblk,1])
 #
 if args.test:
 	command.append('-t')
-	testdata=np.zeros([nchan_new,nsblk])
+	testdata=np.zeros([nchan_new,nbin/nsblk])
 #
 cumsub=0
 for n in np.arange(filenum):
@@ -198,14 +198,14 @@ for n in np.arange(filenum):
 			data=data[chanstart:chanend,:]
 		d.write_period(data,cumsub)
 		if args.test:
-			testdata+=data
+			testdata[:,cumsub]=data.sum(1)
 		cumsub+=1
 		del f['SUBINT'].data
 	f.close()
 if args.test:
 	test=ld.ld('test.ld')
-	test.write_shape([nchan_new,1,nsblk,1])
-	test.write_period(testdata,0)
+	test.write_shape([nchan_new,nbin/nsblk,1,1])
+	test.__write_bin_segment__(testdata,0)
 	testinfo={'nbin':nbin,'test':True,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart}
 	test.write_info(testinfo)
 #

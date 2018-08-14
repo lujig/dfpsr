@@ -10,6 +10,7 @@ import ld,os,copy
 version='JigLu_20180511'
 parser=ap.ArgumentParser(prog='ldzap',description='Zap the frequency domain interference in ld file.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
+parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
 parser.add_argument("filename",help="input ld file")
 args=(parser.parse_args())
 #
@@ -17,7 +18,6 @@ if not os.path.isfile(args.filename):
 	parser.error('A valid ld file name is required.')
 d=ld.ld(args.filename)
 info=d.read_info()
-data=d.period_scrunch()[:,:,0]
 #
 if 'compressed' in info.keys():
 	nchan=int(info['nchan_new'])
@@ -25,12 +25,17 @@ if 'compressed' in info.keys():
 	nperiod=int(info['nsub_new'])
 else:
 	nchan=int(info['nchan'])
-	nbin=int(info['nbin'])
 	if 'test' in info.keys():
-		nperiod=1
+		nbin=1
+		nperiod=int(d.read_shape()[1])
 	else:
+		nbin=int(info['nbin'])
 		nperiod=int(info['nperiod'])
-if data.shape[1]>128:
+if nbin!=1:
+	data=d.period_scrunch()[:,:,0]
+else:
+	data=d.__read_bin_segment__(0,nperiod)[:,:,0]
+if nbin>128 or ((nbin==1)&(nperiod>128)):
 	data=fft.irfft(fft.rfft(data,axis=1)[:,:65],axis=1)
 testdata=copy.deepcopy(data)
 testdata=ma.masked_where(testdata<0,testdata)
@@ -44,6 +49,23 @@ if 'zchan' in info.keys():
 else:
 	zaplist=[]
 	zap0=0
+#
+if args.zap_file:
+	if not os.path.isfile(args.zap_file):
+		parser.error('The zap channel file is invalid.')
+	zchan=np.loadtxt(args.zap_file,dtype=np.int32)
+	if np.max(zchan)>=nchan or np.min(zchan)<0:
+		parser.error('The zapped channel number is overrange.')
+	zap0+=1
+	zaplist.append(zchan)
+	zapnum=set()
+	for i in zaplist:
+		zapnum.update(i)
+	zapnum=np.array(list(zapnum))
+	zaparray=np.zeros_like(testdata)
+	zaparray[zapnum,:]=True
+	testdata.mask=zaparray
+#
 spec=testdata.sum(1)
 spec=spec-np.min(spec)
 spec0=np.append(0,np.append(spec.repeat(2),0))
@@ -62,7 +84,10 @@ def plotimage(ylim):
 	ax1.set_xlim(0,np.max(spec1)*1.1)
 	ax1.set_xticks([])
 	ax1.set_yticks([])
-	ax.set_xlabel('Pulse Phase',fontsize=30)
+	if nbin==1:
+		ax.set_xlabel('Integration Length',fontsize=30)
+	else:
+		ax.set_xlabel('Pulse Phase',fontsize=30)
 	ax.set_ylabel('Frequency (MHz)',fontsize=30)
 	canvas.draw()
 #
