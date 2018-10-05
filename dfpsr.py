@@ -182,6 +182,9 @@ if args.test:
 	command.append('-t')
 	testdata=np.zeros([nchan_new,nbin/nsblk])
 #
+if args.reverse:
+	command.append('-r')
+#
 cumsub=0
 for n in np.arange(filenum):
 	f=ps.open(filelist[n],mmap=True)
@@ -193,7 +196,6 @@ for n in np.arange(filenum):
 				data=data[(nchan-chanstart-1)::-1,:]
 			else:
 				data=data[(nchan-chanstart-1):(nchan-chanend-1):-1,:]
-			command.append('-r')
 		else:
 			data=data[chanstart:chanend,:]
 		d.write_period(data,cumsub)

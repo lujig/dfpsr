@@ -9,6 +9,8 @@ version='JigLu_20180506'
 parser=ap.ArgumentParser(prog='compress',description='Compress the ld file.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("filename",help="input file to be compressed")
+parser.add_argument('-d',dest='dm',default=np.inf,type=np.float64,help="modify the dispersion measure to this value while compressing")
+parser.add_argument('-p',dest='period',default=np.inf,type=np.float64,help="modify the period to this value while compressing")
 parser.add_argument('-f',dest='nchan_new',default=0,type=np.int16,help="frequency scrunch to NCHAN_NEW channels")
 parser.add_argument('-F',action='store_true',default=False,dest='fscrunch',help='frequency scrunch to one channel')
 parser.add_argument('-t',dest='nsub_new',default=0,type=np.int16,help="time scrunch to NSUB_NEW subints")
@@ -113,7 +115,12 @@ if args.freqrange:
 		parser.error("Input frequency is overrange.")
 else:
 	chanstart,chanend=0,nchan
-#
+#i
+if args.dm is not np.inf:
+	dmmodi=True
+	command.append('-d '+str(args.dm))
+else:
+	dmmodi=False
 command=' '.join(command)
 #
 name=args.output
@@ -137,12 +144,24 @@ else:
 d1.write_shape([nchan_new,nsub_new,nbin_new,1])
 #
 def shift(y,x):
-	fftp=fft.rfft(y)
+	shape=np.array(y.shape)
+	fftp=fft.rfft(y.reshape(-1))
 	ffts=fftp*np.exp(x*1j*np.arange(len(fftp)))
 	fftr=fft.irfft(ffts)
-	return fftr
+	return fftr.reshape(shape)
 #
 nchan0=chanend-chanstart
+if dmmodi:
+	freq0=freq_start+channel_width/2.0
+	freq1=freq_end-channel_width/2.0
+	if 'dm' in info.keys():
+		dm_old=np.float64(info['dm'])
+	else:
+		dm_old=0
+	disp_time=1/np.linspace(freq0,freq1,nchan0)**2*np.float64(args.dm-dm_old)*4148.808
+	disp=disp_time*np.pi*2.0/np.float64(info['length'])
+	disp=disp-np.min(disp)
+	info['dm']=args.dm
 res=nchan0
 tpdata=np.zeros([nperiod,nbin])
 i_new=0
@@ -150,12 +169,18 @@ for i in np.arange(chanstart,chanend):
 	if res>nchan_new:
 		res-=nchan_new
 		if i in zchan: continue
-		tpdata+=d.read_chan(i)[:,:,0]
+		if dmmodi:
+			tpdata+=np.float64(shift(d.read_chan(i)[:,:,0],disp[i-chanstart]))
+		else:
+			tpdata+=d.read_chan(i)[:,:,0]
 	else:
 		if i in zchan:
 			chan_data=np.zeros([nperiod,nbin])
 		else:
-			chan_data=d.read_chan(i)[:,:,0]
+			if dmmodi:
+				chan_data=np.float64(shift(d.read_chan(i)[:,:,0],disp[i-chanstart]))
+			else:
+				chan_data=d.read_chan(i)[:,:,0]
 		tpdata+=chan_data*(res*1.0/nchan_new)
 		if nsub_new!=nperiod:
 			tpdata=fft.rfft(tpdata,axis=0)*np.exp(-(0.5/nsub_new-0.5/nperiod)*1j*np.arange(nperiod/2+1)).reshape(-1,1)
