@@ -177,7 +177,7 @@ if len(roots):
 		fftdata=fft.rfft(data0,axis=1)
 		tmp=np.shape(fftdata)[-1]
 		frac=1/freq0**2*4148.808/period*dmmax
-		const=(frac*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)*dmmax
+		const=(frac*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
 		data0=shift(fftdata,const)
 		if 'zchan' in info.keys():
 			data0=ma.masked_array(data0,mask=zaparray)

@@ -32,10 +32,12 @@ if 'compressed' in info.keys():
 	nchan=int(info['nchan_new'])
 	nbin=int(info['nbin_new'])
 	nsub=int(info['nsub_new'])
+	npol=int(info['npol_new'])
 else:
 	nchan=int(info['nchan'])
 	nbin=int(info['nbin'])
 	nsub=int(info['nperiod'])
+	npol=int(info['npol'])
 freq_start=np.float64(info['freq_start'])
 freq_end=np.float64(info['freq_end'])
 freq=(freq_start+freq_end)/2.0
@@ -87,9 +89,9 @@ else:
 	phase=np.array([0,1])
 #
 def shift(y,x):
-	fftp=fft.rfft(y)
-	ffts=fftp*np.exp(-2*np.pi*x*1j*np.arange(np.shape(fftp)[-1]))
-	fftr=fft.irfft(ffts)
+	fftp=fft.rfft(y,axis=0)
+	ffts=fftp*np.exp(-2*np.pi*x*1j*np.arange(np.shape(fftp)[-1])).reshape(-1,1)
+	fftr=fft.irfft(ffts,axis=0)
 	return fftr
 #
 fig=Figure(figsize=(40,30),dpi=80)
@@ -97,7 +99,7 @@ fig.set_facecolor('white')
 ax=fig.add_axes([0.12,0.1,0.82,0.83])
 ax.patch.set_facecolor('w')
 if args.fdomain:
-	data=d.period_scrunch(subint_start,subint_end,chan).sum(2)
+	data=d.period_scrunch(subint_start,subint_end,chan)[:,:,0]
 	if 'zchan' in info.keys():
 		if len(chan):
 			zchan=np.array(list(set(np.int32(info['zchan'].split(','))).intersection(chan)))-chanstart
@@ -119,7 +121,7 @@ if args.fdomain:
 	ax.set_ylim(frequency[0],frequency[1])
 	texty=frequency[1]*1.01-frequency[0]*0.01
 if args.tdomain:
-	data=d.chan_scrunch(chan,subint_start,subint_end).sum(2)
+	data=d.chan_scrunch(chan,subint_start,subint_end)[:,:,0]
 	if args.n:
 		data-=np.polyval(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(data)).T).T
 	else:
@@ -133,30 +135,32 @@ if args.tdomain:
 	ax.set_ylim(subint[0],subint[1])
 	texty=subint[1]*1.01-subint[0]*0.01
 if args.profile:
-	data=d.chan_scrunch(chan,subint_start,subint_end).sum(2).sum(0)
+	data=d.chan_scrunch(chan,subint_start,subint_end).sum(0)
 	if args.n:
 		data-=np.polyval(np.polyfit(np.arange(nbin),data,args.n),np.arange(nbin))
 	bins,mn=10,nbin/10
-	stat,val,tmp=ax.hist(data,bins)
+	stat,val,tmp=ax.hist(data[:,0],bins)
 	while stat.max()>mn and 2*bins<mn:
 		bins*=2
-		stat,val,tmp=ax.hist(data,bins)
+		stat,val,tmp=ax.hist(data[:,0],bins)
 	val=(val[1:]+val[:-1])/2.0
 	argmaxstat=np.argmax(stat)
 	if argmaxstat==0:
-		base=data[(data>(val[1]*-0.5+val[0]*1.5))&(data<(val[1]*0.5+val[0]*0.5))].mean()
+		base=data[(data[:,0]>(val[1]*-0.5+val[0]*1.5))&(data[:,0]<(val[1]*0.5+val[0]*0.5))].mean(0)
 	elif argmaxstat==1:
 		poly=np.polyfit(val[:3],stat[:3],2)
-		base=-poly[1]/poly[0]/2.0
+		#base=-poly[1]/poly[0]/2.0
+		base=data[(data[:,0]>(-poly[1]/poly[0]/2.0-(val[1]-val[0])*0.5))&(data[:,0]<(-poly[1]/poly[0]/2.0+(val[1]-val[0])*0.5))].mean(0)
 	else:
 		poly=np.polyfit(val[(argmaxstat-2):(argmaxstat+3)],stat[(argmaxstat-2):(argmaxstat+3)],2)
-		base=-poly[1]/poly[0]/2.0
+		#base=-poly[1]/poly[0]/2.0
+		base=data[(data[:,0]>(-poly[1]/poly[0]/2.0-(val[1]-val[0])*0.5))&(data[:,0]<(-poly[1]/poly[0]/2.0+(val[1]-val[0])*0.5))].mean(0)
 	data-=base
-	data/=np.max(data)
+	data/=np.max(data[:,0])
 	if args.rotation:
 		data=shift(data,args.rotation)
-	low=min(data)*1.1-max(data)*0.1
-	high=max(data)*1.1-min(data)*0.1
+	low=min(data[:,0])*1.1-max(data[:,0])*0.1
+	high=max(data[:,0])*1.1-min(data[:,0])*0.1
 	x=np.linspace(0,1,len(data))
 	ax.plot(x,data,'k-')
 	ax.set_ylabel('Flux (Arbitrary Unit)',fontsize=30)

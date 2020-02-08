@@ -176,7 +176,7 @@ d=ld.ld(name+'.ld')
 info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
 info['dm']=dm
 nchan_new=chanend-chanstart
-d.write_shape([nchan_new,nbin/nsblk,nsblk,1])
+d.write_shape([nchan_new,nbin/nsblk,nsblk,npol])
 #
 if args.test:
 	command.append('-t')
@@ -190,7 +190,10 @@ for n in np.arange(filenum):
 	f=ps.open(filelist[n],mmap=True)
 	fsub=f['SUBINT'].header['naxis2']
 	for i in np.arange(fsub):
-		data=(np.int16(f['SUBINT'].data[i]['DATA'].reshape(nsblk,npol,nchan).sum(1)).transpose())
+		print fsub,i
+		dtmp=f['SUBINT'].data[i]
+		data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
+		data=data.transpose(2,0,1)
 		if args.reverse or (not bw_sign):
 			if nchan==chanend:
 				data=data[(nchan-chanstart-1)::-1,:]
@@ -200,7 +203,7 @@ for n in np.arange(filenum):
 			data=data[chanstart:chanend,:]
 		d.write_period(data,cumsub)
 		if args.test:
-			testdata[:,cumsub]=data.sum(1)
+			testdata[:,cumsub]=data[:,:,0].sum(1)
 		cumsub+=1
 		del f['SUBINT'].data
 	f.close()
@@ -224,9 +227,9 @@ disp_time=1/np.linspace(freq0,freq1,nchan_new)**2*dm*4148.808
 disp=disp_time/tsamp*np.pi*2.0/nbin01
 disp=disp-np.min(disp)
 def shift(y,x):
-	fftp=fft.rfft(y)
-	ffts=fftp*np.exp(x*1j*np.arange(len(fftp)))
-	fftr=fft.irfft(ffts)
+	fftp=fft.rfft(y,axis=0)
+	ffts=fftp*np.exp(x*1j*np.arange(len(fftp))).reshape(-1,1)
+	fftr=fft.irfft(ffts,axis=0)
 	return fftr
 #
 stt_time=info['stt_time']
@@ -305,30 +308,35 @@ judge0=len(phasenum)-np.sum(phasenum>=0)
 judge1=np.sum(phasenum<totalbin)
 phasenum=phasenum[judge0:judge1]
 phase=phase[judge0:judge1]
-phaseres=(phase-phasenum)
-binint=np.zeros(totalbin+1)
+phaseres=(phase-phasenum).reshape(-1,1)
+binint=np.zeros(totalbin+1).reshape(-1,1)
 binint[phasenum]=1-phaseres
 binint[phasenum+1]+=phaseres
-binint=binint[:-1].reshape(-1,temp_multi).sum(1)
+binint=binint[:-1].reshape(-1,temp_multi,1).sum(1)
 binint[binint==0]=1
 #
-d.write_shape([nchan_new,nperiod,nbin,1])
+d.write_shape([nchan_new,nperiod,nbin,npol])
 t=time.time()
 if args.threads<=0:
 	parser.error('Threads number should be positive.')
 elif args.threads==1:
 	for k in np.arange(nchan_new):
+		print nchan_new,k
 		if k in zchan:
 			d.write_chan(np.zeros(totalbin/temp_multi),k)
 			continue
-		data=np.zeros(nbin01)
-		data[:nbin_old]=d.__read_chan0__(k,ndata_chan0=nbin_old)
+		data=np.zeros([nbin01,npol])
+		data[:nbin_old]=d.__read_chan0__(k,ndata_chan0=nbin_old*npol).reshape(nbin_old,npol)
 		ddata=np.float64(shift(data,disp[k])[:nbin0])[judge0:judge1]
-		tpdata=np.zeros(totalbin+1)
+		tpdata=np.zeros([totalbin+1,npol])
 		tpdata[phasenum]=ddata*(1-phaseres)
 		tpdata[phasenum+1]+=ddata*phaseres
-		tpdata=tpdata[:-1].reshape(-1,temp_multi).sum(1)/binint
+		tpdata=tpdata[:-1].reshape(-1,temp_multi,npol).sum(1)/binint
 		d.write_chan(tpdata,k)
+		ttt=int(np.floor(disp[k]*nbin01+judge0))
+		print data[ttt:(ttt+5)]
+		print ddata[:5]
+		print tpdata[:5]
 else:
 	np.save(name+'_df_assist_temp',{'nchan_new':nchan_new,'zchan':zchan,'totalbin':totalbin,'temp_multi':temp_multi,'nbin0':nbin0,'nbin01':nbin01,'nbin_old':nbin_old,'disp':disp,'judge0':judge0,'judge1':judge1,'phasenum':phasenum,'phaseres':phaseres,'binint':binint})
 	if nchan_new<args.threads:
