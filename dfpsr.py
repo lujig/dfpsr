@@ -190,7 +190,6 @@ for n in np.arange(filenum):
 	f=ps.open(filelist[n],mmap=True)
 	fsub=f['SUBINT'].header['naxis2']
 	for i in np.arange(fsub):
-		print fsub,i
 		dtmp=f['SUBINT'].data[i]
 		data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
 		data=data.transpose(2,0,1)
@@ -321,7 +320,6 @@ if args.threads<=0:
 	parser.error('Threads number should be positive.')
 elif args.threads==1:
 	for k in np.arange(nchan_new):
-		print nchan_new,k
 		if k in zchan:
 			d.write_chan(np.zeros(totalbin/temp_multi),k)
 			continue
@@ -333,10 +331,6 @@ elif args.threads==1:
 		tpdata[phasenum+1]+=ddata*phaseres
 		tpdata=tpdata[:-1].reshape(-1,temp_multi,npol).sum(1)/binint
 		d.write_chan(tpdata,k)
-		ttt=int(np.floor(disp[k]*nbin01+judge0))
-		print data[ttt:(ttt+5)]
-		print ddata[:5]
-		print tpdata[:5]
 else:
 	np.save(name+'_df_assist_temp',{'nchan_new':nchan_new,'zchan':zchan,'totalbin':totalbin,'temp_multi':temp_multi,'nbin0':nbin0,'nbin01':nbin01,'nbin_old':nbin_old,'disp':disp,'judge0':judge0,'judge1':judge1,'phasenum':phasenum,'phaseres':phaseres,'binint':binint})
 	if nchan_new<args.threads:
