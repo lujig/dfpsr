@@ -9,7 +9,7 @@ dfpsr.py:
 compress.py:
 	Compress the ld format file with given nchan, nsub, nbin, and save resutls in a new ld file.
 
-	compress.py [-f NCHAN] [-F] [-t NSUB] [-T] [-b NBIN] [-B] [-r FREQ_RANGE] [-s SUBINT_RANGE] filename
+	compress.py [-f NCHAN] [-F] [-t NSUB] [-T] [-b NBIN] [-B] [-P] [-r FREQ_RANGE] [-s SUBINT_RANGE] filename
 
 para.py:
 	View the information of ld format file.
