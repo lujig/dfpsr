@@ -321,7 +321,7 @@ if args.threads<=0:
 elif args.threads==1:
 	for k in np.arange(nchan_new):
 		if k in zchan:
-			d.write_chan(np.zeros(totalbin/temp_multi),k)
+			d.write_chan(np.zeros([totalbin/temp_multi,npol]),k)
 			continue
 		data=np.zeros([nbin01,npol])
 		data[:nbin_old]=d.__read_chan0__(k,ndata_chan0=nbin_old*npol).reshape(nbin_old,npol)
