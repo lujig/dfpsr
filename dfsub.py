@@ -12,7 +12,7 @@ try:
 except:
 	import pyfits as ps
 #
-version='JigLu_20180507'
+version='JigLu_20200829'
 #
 parser=ap.ArgumentParser(prog='dfpsr',description='Dedisperse and Fold the psrfits data.',epilog='Ver '+version)
 parser.add_argument('-v','--version', action='version', version=version)
@@ -27,6 +27,7 @@ parser.add_argument("-c","--coefficients_num",dest="ncoeff",default=12,type=int,
 parser.add_argument("-b","--nbin",dest="nbin",default=0,type=int,help="number of phase bins in each period")
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
 parser.add_argument("-r","--reverse",action="store_true",default=False,help="reverse the band")
+parser.add_argument("-l","--large_mem",action="store_true",default=False,help="large RAM")
 parser.add_argument("-t","--test",action="store_true",default=False,help="generate a subint scrunched test datafile test.npy to help in judging noisy channel")
 args=(parser.parse_args())
 command=['dfpsr.py']
@@ -190,25 +191,47 @@ if args.reverse:
 	command.append('-r')
 #
 cumsub=0
-for n in np.arange(filenum):
-	f=ps.open(filelist[n],mmap=True)
-	fsub=f['SUBINT'].header['naxis2']
-	dtmp=f['SUBINT'].data
-	data=np.int16(dtmp['DATA'].reshape(fsub*nsblk,npol,nchan)*dtmp[0]['dat_scl'].reshape(1,npol,nchan)+dtmp[0]['dat_offs'].reshape(1,npol,nchan))
-	data=data.transpose(2,0,1)
-	if args.reverse or (not bw_sign):
-		if nchan==chanend:
-			data=data[(nchan-chanstart-1)::-1,:]
+if args.large_mem:
+	for n in np.arange(filenum):
+		f=ps.open(filelist[n],mmap=True)
+		fsub=f['SUBINT'].header['naxis2']
+		dtmp=f['SUBINT'].data
+		data=np.int16(dtmp['DATA'].reshape(fsub*nsblk,npol,nchan)*dtmp[0]['dat_scl'].reshape(1,npol,nchan)+dtmp[0]['dat_offs'].reshape(1,npol,nchan))
+		data=data.transpose(2,0,1)
+		if args.reverse or (not bw_sign):
+			if nchan==chanend:
+				data=data[(nchan-chanstart-1)::-1,:]
+			else:
+				data=data[(nchan-chanstart-1):(nchan-chanend-1):-1,:]
 		else:
-			data=data[(nchan-chanstart-1):(nchan-chanend-1):-1,:]
-	else:
-		data=data[chanstart:chanend,:]
-	d.__write_bin_segment__(data,cumsub*nsblk)
-	if args.test:
-		testdata[:,cumsub:(cumsub+fsub)]=data[:,:,0].reshape(-1,fsub,nsblk).sum(2)
-	cumsub+=fsub
-	del f['SUBINT'].data
-	f.close()
+			data=data[chanstart:chanend,:]
+		d.__write_bin_segment__(data,cumsub*nsblk)
+		if args.test:
+			testdata[:,cumsub:(cumsub+fsub)]=data[:,:,0].reshape(-1,fsub,nsblk).sum(2)
+		cumsub+=fsub
+		del f['SUBINT'].data
+		f.close()
+else:
+	for n in np.arange(filenum):
+		f=ps.open(filelist[n],mmap=True)
+		fsub=f['SUBINT'].header['naxis2']
+		for i in np.arange(fsub):
+			dtmp=f['SUBINT'].data[i]
+			data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
+			data=data.transpose(2,0,1)
+			if args.reverse or (not bw_sign):
+				if nchan==chanend:
+					data=data[(nchan-chanstart-1)::-1,:]
+				else:
+					data=data[(nchan-chanstart-1):(nchan-chanend-1):-1,:]
+			else:
+				data=data[chanstart:chanend,:]
+			d.write_period(data,cumsub)
+			if args.test:
+				testdata[:,cumsub]=data[:,:,0].sum(1)
+			cumsub+=1
+			del f['SUBINT'].data
+		f.close()
 if args.test:
 	test=ld.ld('test.ld')
 	test.write_shape([nchan_new,nbin/nsblk,1,1])
