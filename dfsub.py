@@ -6,7 +6,6 @@ import argparse as ap
 import os,time,ld
 import mpmath as mm
 mm.mp.dps=30
-globaltime=time.time()
 try:
 	import astropy.io.fits as ps
 except:
@@ -16,6 +15,7 @@ version='JigLu_20200829'
 #
 parser=ap.ArgumentParser(prog='dfpsr',description='Dedisperse and Fold the psrfits data.',epilog='Ver '+version)
 parser.add_argument('-v','--version', action='version', version=version)
+parser.add_argument('--verbose', action="store_true",default=False,help="print detailed information")
 parser.add_argument("filename",nargs='+',help="name of file or filelist")
 parser.add_argument("-o","--output",dest="output",default="psr",help="output file name")
 parser.add_argument("-f","--frequency",dest='freqrange',default=0,help="output frequency range (MHz) in form start_freq,end_freq")
@@ -103,9 +103,10 @@ if args.freqrange:
 		parser.error("Input frequency is overrange.")
 else:
 	chanstart,chanend=0,nchan
+nchan_new=chanend-chanstart
 #
 nbin=file_len.sum()
-stt_time=file_t0[0]
+stt_time=file_t0[0]+tsamp/2.0
 freq_start,freq_end=(np.array([chanstart,chanend])-0.5*nchan)*channel_width+freq
 info={'nbin_origin':nbin,'telename':telename,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart,'tsamp_origin':tsamp,'stt_time_origin':stt_time,'stt_time':stt_time,'npol':npol}
 #
@@ -155,6 +156,8 @@ else:
 	dm=args.dm
 	command.append('-p '+str(args.period)+' -d '+str(args.dm))
 #
+info['dm']=dm
+#
 command.append('-c '+str(args.ncoeff))
 if args.nbin:
 	command.append('-b '+str(args.nbin))
@@ -177,67 +180,13 @@ if os.path.isfile(name):
 if len(name)>3:
 	if name[-3:]=='.ld':
 		name=name[:-3]
-d=ld.ld(name+'.ld')
-info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
-info['dm']=dm
-nchan_new=chanend-chanstart
-d.write_shape([nchan_new,nbin/nsblk,nsblk,npol])
 #
 if args.test:
 	command.append('-t')
-	testdata=np.zeros([nchan_new,nbin/nsblk])
+	testdata=np.zeros([nchan_new,filenum])
 #
 if args.reverse:
 	command.append('-r')
-#
-cumsub=0
-if args.large_mem:
-	for n in np.arange(filenum):
-		f=ps.open(filelist[n],mmap=True)
-		fsub=f['SUBINT'].header['naxis2']
-		dtmp=f['SUBINT'].data
-		data=np.int16(dtmp['DATA'].reshape(fsub*nsblk,npol,nchan)*dtmp[0]['dat_scl'].reshape(1,npol,nchan)+dtmp[0]['dat_offs'].reshape(1,npol,nchan))
-		data=data.transpose(2,0,1)
-		if args.reverse or (not bw_sign):
-			if nchan==chanend:
-				data=data[(nchan-chanstart-1)::-1,:]
-			else:
-				data=data[(nchan-chanstart-1):(nchan-chanend-1):-1,:]
-		else:
-			data=data[chanstart:chanend,:]
-		d.__write_bin_segment__(data,cumsub*nsblk)
-		if args.test:
-			testdata[:,cumsub:(cumsub+fsub)]=data[:,:,0].reshape(-1,fsub,nsblk).sum(2)
-		cumsub+=fsub
-		del f['SUBINT'].data
-		f.close()
-else:
-	for n in np.arange(filenum):
-		f=ps.open(filelist[n],mmap=True)
-		fsub=f['SUBINT'].header['naxis2']
-		for i in np.arange(fsub):
-			dtmp=f['SUBINT'].data[i]
-			data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
-			data=data.transpose(2,0,1)
-			if args.reverse or (not bw_sign):
-				if nchan==chanend:
-					data=data[(nchan-chanstart-1)::-1,:]
-				else:
-					data=data[(nchan-chanstart-1):(nchan-chanend-1):-1,:]
-			else:
-				data=data[chanstart:chanend,:]
-			d.write_period(data,cumsub)
-			if args.test:
-				testdata[:,cumsub]=data[:,:,0].sum(1)
-			cumsub+=1
-			del f['SUBINT'].data
-		f.close()
-if args.test:
-	test=ld.ld('test.ld')
-	test.write_shape([nchan_new,nbin/nsblk,1,1])
-	test.__write_bin_segment__(testdata,0)
-	testinfo={'nbin':nbin,'test':True,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart}
-	test.write_info(testinfo)
 #
 command=' '.join(command)
 info['history']=command
@@ -246,11 +195,6 @@ nbin_old=nbin
 freq0=freq_start
 freq1=freq_end
 nbin0=nbin
-def shift(y,x):
-	fftp=fft.rfft(y,axis=0)
-	ffts=fftp*np.exp(x*1j*np.arange(len(fftp))).reshape(-1,1)
-	fftr=fft.irfft(ffts,axis=0)
-	return fftr
 #
 stt_time=info['stt_time']
 end_time=stt_time+tsamp*nbin0/86400.0+60./86400
@@ -288,7 +232,7 @@ else:
 		elif elements[0]=='DISPERSION_CONSTANT':
 			dispc=np.float64(elements[1])
 		elif elements[0]=='COEFFS':
-			coeff.append(map(mm.mpf,elements[1:]))
+			coeff.append(list(map(mm.mpf,elements[1:])))
 		elif line=="ChebyModel END\n" or line=="ChebyModel END":
 			break
 	info['predictor']=predictor[1:]
@@ -303,10 +247,10 @@ else:
 	t1=np.float64(t1-time0[-1])*86400.0
 	dt=(np.array([0,nbin0])*tsamp+time0[:-1].sum()-t0)/(t1-t0)*2-1
 	df=(np.array([freq_start,freq_end])-f0)/(f1-f0)*2-1
-	phase=nc.chebval2d(dt,np.array([df[0],df[0]]),coeff)+dispc/freq_start**2
+	phase=nc.chebval2d(dt,np.array([df[1],df[1]]),coeff)+dispc/freq_end**2
 	phase0=np.ceil(phase[0])
 	period=(t1-t0)/2/coeff[1,0]
-	nperiod=int(np.floor(phase[-1]-phase0-dispc/freq_start**2+dispc/freq_end**2))
+	nperiod=int(np.floor(phase[-1]-phase0+dispc/freq_start**2-dispc/freq_end**2))
 	coeff[0,0]-=phase0
 	roots=nc.chebroots(coeff[:,0])
 	roots=np.real(roots[np.isreal(roots)])
@@ -321,31 +265,83 @@ info['period']=period
 nbin_max=(nbin0-1)/(np.max(phase)-np.min(phase))
 if args.nbin:
 	nbin=args.nbin
-	temp_multi=2**(np.int16(np.log2(nbin_max/nbin))+1)
+	temp_multi=2**(np.int16(np.log2(nbin_max/nbin)))
 else:
 	nbin=2**np.int16(np.log2(nbin_max))
-	temp_multi=2
+	temp_multi=1
 info['nbin']=nbin
 info['length']=period*nperiod
 #
 totalbin=nperiod*nbin*temp_multi
-new_phaseline=np.arange(totalbin)*1.0/(nbin*temp_multi)
+dphasebin=1./(nbin*temp_multi)
+df=freq_start+np.arange(nchan_new)*channel_width
 #
+d=ld.ld(name+'.ld')
+info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
+#d.write_shape([nchan_new,nbin/nsblk,nsblk,npol])
 d.write_shape([nchan_new,nperiod,nbin,npol])
-dt=(np.arange(nbin0)*tsamp+time0[:-1].sum()-t0)/(t1-t0)*2-1
-for k in np.arange(nchan_new):
-	if k in zchan:
-		d.write_chan(np.zeros([totalbin/temp_multi,npol]),k)
-		continue
-	chan_freq=freq_start+k*channel_width
-	df=(chan_freq-f0)/(f1-f0)*2-1
-        phase=nc.chebval2d(dt,np.ones(nbin0,dtype=np.float64)*df,coeff)+dispc/chan_freq**2
-	data=d.__read_chan0__(k,ndata_chan0=nbin_old*npol).reshape(nbin_old,npol)
-	tpdata=np.zeros([totalbin,npol])
-	for i in np.arange(npol):
-		tpdata[:,i]=np.interp(new_phaseline,phase,data[:,i])
-	tpdata=tpdata.reshape(-1,temp_multi,npol).sum(1)
-	d.write_chan(tpdata,k)
+cumsub=0
+def gendata(cums,nsub,data):
+	data=np.concatenate((np.zeros([1,npol,nchan]),data,np.zeros([1,npol,nchan])),axis=0).transpose(2,1,0)
+	if args.reverse or (not bw_sign):
+		if nchan==chanend:
+			data=data[(nchan-chanstart-1)::-1,:]
+		else:
+			data=data[(nchan-chanstart-1):(nchan-chanend-1):-1,:]
+	else:
+		data=data[chanstart:chanend,:]
+	if args.period:
+		dt=np.array([np.arange(nsblk*cums-1,nsblk*cums+nsub+1)*tsamp]*nchan_new)
+		if dm:
+			dt+=dm/df.reshape(-1,1)**2*4148808.0
+		phase=dt/period
+	else:
+		dt=(np.arange(nsblk*cums-1,nsblk*cums+nsub+1)*tsamp+time0[:-1].sum()-t0)/(t1-t0)*2-1
+		dtt,dff=np.meshgrid(dt,(df-f0)/(f1-f0)*2-1)
+		phase=nc.chebval2d(dtt,dff,coeff)+(dispc/df**2).reshape(-1,1)
+	for f in np.arange(nchan_new):
+		newphase=np.arange(phase[f,0]//dphasebin+1,phase[f,-1]//dphasebin)
+		if newphase[-1]<0 or newphase[0]>=totalbin:
+			continue
+		newphase=newphase[(newphase>=0) & (newphase<totalbin)]
+		tpdata=np.zeros([len(newphase),npol])
+		for p in np.arange(npol):
+			tpdata[:,p]=np.interp(newphase,phase[f]/dphasebin,data[f,p,:])
+		d.__write_chanbins_add__(tpdata,np.int64(newphase[0]),f)
+#
+if args.large_mem:
+	for n in np.arange(filenum):
+		f=ps.open(filelist[n],mmap=True)
+		fsub=f['SUBINT'].header['naxis2']
+		dtmp=f['SUBINT'].data
+		data=np.int16(dtmp['DATA'].reshape(fsub*nsblk,npol,nchan)*dtmp[0]['dat_scl'].reshape(1,npol,nchan)+dtmp[0]['dat_offs'].reshape(1,npol,nchan))
+		del f['SUBINT'].data
+		f.close()
+		gendata(cumsub,file_len[n],data)
+		if args.test:
+			testdata[:,n]=data[:,:,0].sum(1)
+		cumsub+=fsub
+else:
+	for n in np.arange(filenum):
+		f=ps.open(filelist[n],mmap=True)
+		fsub=f['SUBINT'].header['naxis2']
+		for i in np.arange(fsub):
+			dtmp=f['SUBINT'].data[i]
+			data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
+			del f['SUBINT'].data
+			gendata(cumsub,nsblk,data)
+			if args.test:
+				testdata[:,n]+=data[:,:,0].sum(1)
+			cumsub+=1
+			print(i)
+		f.close()
+if args.test:
+	test=ld.ld('test.ld')
+	test.write_shape([nchan_new,nbin/nsblk,1,1])
+	test.__write_bin_segment__(testdata,0)
+	testinfo={'nbin':nbin,'test':True,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart}
+	test.write_info(testinfo)
+#
 d.write_info(info)
 #
 

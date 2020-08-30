@@ -6,7 +6,7 @@ class ld():
 	def __init__(self,name):
 		self.name=name
 		if not os.path.isfile(name):
-			self.__size__=np.array([24,0,0,0,0]) # [filesize, nchan, nperiod, nbin, npol] [Q, I, I, I, I] 24 bytes in total
+			self.__size__=np.array([24,0,0,0,0],dtype=np.int64) # [filesize, nchan, nperiod, nbin, npol] [Q, I, I, I, I] 24 bytes in total
 			self.file=open(name,'wb')
 			self.file.close()
 			self.__write_size__(self.__size__)
@@ -90,7 +90,7 @@ class ld():
 			raise Exception('The input period number is larger than total period number of file.')
 		data=data.reshape(self.__size__[1],self.__size__[3]*self.__size__[4])
 		self.file=open(self.name,'rb+')
-		for i in xrange(self.__size__[1]):
+		for i in range(self.__size__[1]):
 			self.file.seek(24+ndata_chan*i*8+p_num*ndata_period*8)
 			self.file.write(st.pack('>'+str(ndata_period)+'d',*data[i]))
 		#print self.file.tell(),data.shape,ndata_chan,ndata_period,p_num
@@ -104,7 +104,7 @@ class ld():
 			raise Exception('The input period number is larger than total period number of file.')
 		data=np.zeros([self.__size__[1],self.__size__[3],self.__size__[4]])
 		self.file=open(self.name,'rb')
-		for i in xrange(self.__size__[1]):
+		for i in range(self.__size__[1]):
 			self.file.seek(24+ndata_chan*i*8+p_num*ndata_period*8)
 			data[i]=np.array(st.unpack('>'+str(ndata_period)+'d',self.file.read(ndata_period*8))).reshape(self.__size__[3],self.__size__[4])
 		self.file.close()
@@ -118,9 +118,28 @@ class ld():
 			raise Exception('The input bin number is overrange.')
 		data=data.reshape(self.__size__[1],-1)
 		self.file=open(self.name,'rb+')
-		for i in xrange(self.__size__[1]):
+		for i in range(self.__size__[1]):
 			self.file.seek(24+ndata_chan*i*8+bin_start*8*self.__size__[4])
 			self.file.write(st.pack('>'+str(data.shape[1])+'d',*data[i]))
+		self.file.close()
+		self.__refresh_size__()
+	#
+	def __write_chanbins_add__(self,data,bin_start,chan_num):
+		ndata_chan=np.int64(np.array(self.__size__[2:]).prod())
+		if self.__size__[4]!=data.shape[1]:
+			raise Exception('Data size unmatches the file.')
+		if (bin_start*self.__size__[4]+np.array(data.shape).prod())>ndata_chan or bin_start<0:
+			raise Exception('The input bin number is overrange.')
+		data=data.reshape(-1)
+		size=data.size
+		self.file=open(self.name,'rb+')
+		self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
+		data0=np.zeros_like(data,dtype=np.float64)
+		data0tmp=self.file.read(size*8)
+		length0=int(len(data0tmp)/8)
+		data0[:length0]=np.array(st.unpack('>'+str(length0)+'d',data0tmp))
+		self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
+		self.file.write(st.pack('>'+str(size)+'d',*(data+data0)))
 		self.file.close()
 		self.__refresh_size__()
 	#
@@ -130,9 +149,9 @@ class ld():
 			raise Exception('The input bin number is overrange.')
 		data=np.zeros([self.__size__[1],bin_num,self.__size__[4]])
 		self.file=open(self.name,'rb')
-		for i in xrange(self.__size__[1]):
+		for i in range(self.__size__[1]):
 			self.file.seek(24+ndata_chan*i*8+bin_start*8*self.__size__[4])
-			data[i]=np.array(st.unpack('>'+str(bin_num)+'d',self.file.read(bin_num*8))).reshape(bin_num,self.__size__[4])
+			data[i]=np.array(st.unpack('>'+str(bin_num*self.__size__[4])+'d',self.file.read(bin_num*self.__size__[4]*8))).reshape(bin_num,self.__size__[4])
 		self.file.close()
 		return data
 	#
@@ -174,7 +193,7 @@ class ld():
 		bin_num=(end_period-start_period)*self.__size__[3]*self.__size__[4]
 		data=np.zeros([len(select_chan),self.__size__[3],self.__size__[4]])
 		self.file=open(self.name,'rb')
-		for i in xrange(len(select_chan)):
+		for i in range(len(select_chan)):
 			self.file.seek(24+ndata_chan*select_chan[i]*8+bin_start*8*self.__size__[4])
 			data[i]=np.array(st.unpack('>'+str(bin_num)+'d',self.file.read(bin_num*8))).reshape(end_period-start_period,self.__size__[3],self.__size__[4]).sum(0)
 		return data
