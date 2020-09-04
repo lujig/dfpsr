@@ -13,7 +13,7 @@ except:
 #
 version='JigLu_20200829'
 #
-parser=ap.ArgumentParser(prog='dfpsr',description='Dedisperse and Fold the psrfits data.',epilog='Ver '+version)
+parser=ap.ArgumentParser(prog='dfsub',description='Dedisperse and Fold the psrfits data.',epilog='Ver '+version)
 parser.add_argument('-v','--version', action='version', version=version)
 parser.add_argument('--verbose', action="store_true",default=False,help="print detailed information")
 parser.add_argument("filename",nargs='+',help="name of file or filelist")
@@ -312,6 +312,7 @@ elif info['mode']=='single':
 info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
 d.write_shape([nchan_new,info['nsub'],nbin,npol])
 cumsub=0
+print nchan_new,info['nsub'],nbin,npol,sub_nperiod
 def gendata(cums,nsub,data):
 	data=np.concatenate((np.zeros([1,npol,nchan]),data,np.zeros([1,npol,nchan])),axis=0).transpose(2,1,0)
 	if args.reverse or (not bw_sign):
@@ -354,25 +355,34 @@ def gendata(cums,nsub,data):
 			startperiod,phaseres1=np.divmod(startphase,nbin)
 			phaseres1=np.int64(phaseres1)
 			file_nperiod=np.int64(np.ceil((nphase+phaseres1)*1.0/nbin))
-			tpdata=np.concatenate((np.zeros([phaseres1,npol]),tpdata,np.zeros([file_nperiod*nbin-nphase-phaseres1,npol])),axis=0).reshape(file_nperiod,nbin,npol)
-			startsub,periodres=np.divmod(startphase,nbin)
+			startsub,periodres=np.divmod(startperiod,sub_nperiod)
 			periodres=np.int64(periodres)
 			file_nsub=np.int64(np.ceil((file_nperiod+periodres)*1.0/sub_nperiod))
-			tpdata=np.concatenate((np.zeros([phaseres1,nbin,npol]),tpdata,np.zeros([file_nperiod*nbin-nphase-phaseres1,nbin,npol])),axis=0).reshape(file_nperiod,nbin,npol)
 			global tpsub
-			if file_nsub>2 or (file_nsub==2 and newphase[-1]==totalbin):
-				tpdata=np.concatenate((np.zeros([periodres,nbin,npol]),tpdata,np.zeros([file_nsub*sub_nperiod-file_nperiod-periodres,nbin,npol])),axis=0).reshape(file_nsub,sub_nperiod,nbin,npol).sum(1)
-				tpdata[0]+=tpsub[f]
+			if file_nsub>1:
+				file_sub_data=np.zeros([file_nsub,nbin,npol])
+				file_sub_data=np.zeros([file_nsub,nbin,npol])
 				if newphase[-1]==totalbin:
-					d.__write_chanbins__(tpdata.reshape(-1,npol),startsub*nbin,f)
+					file_sub_data[1:]=tpdata[((sub_nperiod-periodres)*nbin-phaseres1):].reshape(file_nsub-1,sub_nperiod,nbin,npol).sum(1)
+					file_sub_data[0]+=tpsub[f]
+					d.__write_chanbins__(file_sub_data.reshape(-1,npol),startsub*nbin,f)
 				else:
-					d.__write_chanbins__(tpdata[:-1].reshape(-1,npol),startsub*nbin,f)
-					tpsub[f]=tpdata[-1]
-			elif file_nsub==2:
-				tpsub[f]+=tpdata[:(sub_nperiod-periodres)].sum(0)
-				d.__write_chanbins__(tpsub[f],startsub*nbin,f)
+					file_sub_data[1:-1]=tpdata[((sub_nperiod-periodres)*nbin-phaseres1):(((file_nsub-1)*sub_nperiod-periodres)*nbin-phaseres1)].reshape(file_nsub-2,sub_nperiod,nbin,npol).sum(1)
+					file_sub_data[0]+=tpsub[f]
+					d.__write_chanbins__(file_sub_data[:-1].reshape(-1,npol),startsub*nbin,f)
+					tpsub[f]=file_sub_data[-1]
+			elif file_nperiod>1:
+				phaseres_left=nbin-phaseres1
+				phaseres_right=(file_nperiod-1)*nbin-phaseres1
+				tpsub[f,phaseres1:]+=tpdata[:phaseres_left]
+				tpsub[f,:(nphase-phaseres_right)]+=tpdata[phaseres_right:]
+				if file_nperiod>2:
+					tpsub[f]+=tpdata[phaseres_left:phaseres_right].reshape(file_nperiod-2,nbin,npol).sum(0)
 			else:
-				tpsub[f]+=tpdata.sum(0)
+				if startphase==0:
+					tpsub[f,:(len(tpdata))]+=tpdata
+				else:
+					tpsub[f,(-len(tpdata)):]+=tpdata
 #
 if args.verbose:
 	sys.stdout.write('Dedispersing and folding the data...\n')

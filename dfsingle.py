@@ -179,11 +179,7 @@ command.append('-c '+str(args.ncoeff))
 if args.nbin:
 	command.append('-b '+str(args.nbin))
 	if args.nbin>(period/tsamp):
-		if args.subint:
-			if args.nbin>(period/tsamp*sub_nperiod):
-				parser.error('Provided phase bin number in each period is too large.')
-		else:
-			parser.error('Provided phase bin number in each period is too large.')
+		parser.error('Provided phase bin number in each period is too large.')
 #
 if args.zap_file:
 	command.append('-z')
@@ -289,10 +285,7 @@ info['period']=period
 nbin_max=(nbin0-1)/(np.max(phase)-np.min(phase))
 if args.nbin:
 	nbin=args.nbin
-	if nbin>nbin_max:
-		temp_multi=1
-	else:
-		temp_multi=2**(np.int16(np.log2(nbin_max/nbin)))
+	temp_multi=2**(np.int16(np.log2(nbin_max/nbin)))
 else:
 	nbin=2**np.int16(np.log2(nbin_max))
 	temp_multi=1
@@ -345,39 +338,11 @@ def gendata(cums,nsub,data):
 			phaseres0=np.int64(phaseres0)
 			nphase=np.int64(np.ceil((newphase[-1]+1-newphase[0]+phaseres0)*1.0/temp_multi))
 			tpdata=np.concatenate((np.zeros([phaseres0,npol]),tpdata,np.zeros([nphase*temp_multi-newphase[-1]-1+newphase[0]-phaseres0,npol])),axis=0).reshape(nphase,temp_multi,npol).sum(1)
-		else:
-			startphase=newphase[0]
-			nphase=newphase.size
-		if info['mode']=='single':
-			d.__write_chanbins_add__(tpdata,startphase,f)
-		else:
-			startperiod,phaseres1=np.divmod(startphase,nbin)
-			phaseres1=np.int64(phaseres1)
-			file_nperiod=np.int64(np.ceil((nphase+phaseres1)*1.0/nbin))
-			tpdata=np.concatenate((np.zeros([phaseres1,npol]),tpdata,np.zeros([file_nperiod*nbin-nphase-phaseres1,npol])),axis=0).reshape(file_nperiod,nbin,npol)
-			startsub,periodres=np.divmod(startphase,nbin)
-			periodres=np.int64(periodres)
-			file_nsub=np.int64(np.ceil((file_nperiod+periodres)*1.0/sub_nperiod))
-			tpdata=np.concatenate((np.zeros([phaseres1,nbin,npol]),tpdata,np.zeros([file_nperiod*nbin-nphase-phaseres1,nbin,npol])),axis=0).reshape(file_nperiod,nbin,npol)
-			global tpsub
-			if file_nsub>2 or (file_nsub==2 and newphase[-1]==totalbin):
-				tpdata=np.concatenate((np.zeros([periodres,nbin,npol]),tpdata,np.zeros([file_nsub*sub_nperiod-file_nperiod-periodres,nbin,npol])),axis=0).reshape(file_nsub,sub_nperiod,nbin,npol).sum(1)
-				tpdata[0]+=tpsub[f]
-				if newphase[-1]==totalbin:
-					d.__write_chanbins__(tpdata.reshape(-1,npol),startsub*nbin,f)
-				else:
-					d.__write_chanbins__(tpdata[:-1].reshape(-1,npol),startsub*nbin,f)
-					tpsub[f]=tpdata[-1]
-			elif file_nsub==2:
-				tpsub[f]+=tpdata[:(sub_nperiod-periodres)].sum(0)
-				d.__write_chanbins__(tpsub[f],startsub*nbin,f)
-			else:
-				tpsub[f]+=tpdata.sum(0)
+		d.__write_chanbins_add__(tpdata,np.int64(newphase[0]),f)
 #
 if args.verbose:
 	sys.stdout.write('Dedispersing and folding the data...\n')
 #
-timemark=time.time()
 for n in np.arange(filenum):
 	if args.verbose:
 		sys.stdout.write('Processing the '+str(n+1)+'th fits file...\n')
@@ -402,8 +367,6 @@ for n in np.arange(filenum):
 				testdata[:,n]+=data[:,0,:].sum(0)
 			cumsub+=1
 		f.close()
-	print time.time()-timemark
-	timemark=time.time()
 if args.test:
 	test=ld.ld('test.ld')
 	test.write_shape([nchan_new,nbin/nsblk,1,1])

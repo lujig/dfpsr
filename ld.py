@@ -44,6 +44,10 @@ class ld():
 			raise Exception('Data shape should be 4 integers.')
 		self.__size__[1:]=np.int32(shape)
 		self.__write_size__(self.__size__)
+		self.file=open(self.name,'rb+')
+		self.file.seek(24,0)
+		self.file.truncate()
+		self.file.close()
 	#
 	def read_shape(self):
 		return self.__size__[1:]
@@ -140,6 +144,19 @@ class ld():
 		data0[:length0]=np.array(st.unpack('>'+str(length0)+'d',data0tmp))
 		self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
 		self.file.write(st.pack('>'+str(size)+'d',*(data+data0)))
+		self.file.close()
+		self.__refresh_size__()
+	#
+	def __write_chanbins__(self,data,bin_start,chan_num):
+		ndata_chan=np.int64(np.array(self.__size__[2:]).prod())
+		if self.__size__[4]!=data.shape[1]:
+			raise Exception('Data size unmatches the file.')
+		if (bin_start*self.__size__[4]+np.array(data.shape).prod())>ndata_chan or bin_start<0:
+			raise Exception('The input bin number is overrange.')
+		data=data.reshape(-1)
+		self.file=open(self.name,'rb+')
+		self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
+		self.file.write(st.pack('>'+str(data.size)+'d',*data))
 		self.file.close()
 		self.__refresh_size__()
 	#
