@@ -46,7 +46,7 @@ class ld():
 		self.__write_size__(self.__size__)
 		self.file=open(self.name,'rb+')
 		self.file.seek(24,0)
-		self.file.truncate()
+		#self.file.truncate()
 		self.file.close()
 	#
 	def read_shape(self):
@@ -206,7 +206,7 @@ class ld():
 			raise Exception('The starting period number is larger than ending period number.')
 		if end_period==0:
 			end_period=self.__size__[2]
-		bin_start=start_period*self.__size__[3]*self.__size__[4]
+		bin_start=start_period*self.__size__[3]
 		bin_num=(end_period-start_period)*self.__size__[3]*self.__size__[4]
 		data=np.zeros([len(select_chan),self.__size__[3],self.__size__[4]])
 		self.file=open(self.name,'rb')
