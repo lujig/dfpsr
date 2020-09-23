@@ -17,10 +17,12 @@ parser=ap.ArgumentParser(prog='dfsub',description='Dedisperse and Fold the psrfi
 parser.add_argument('-v','--version', action='version', version=version)
 parser.add_argument('--verbose', action="store_true",default=False,help="print detailed information")
 parser.add_argument("filename",nargs='+',help="name of file or filelist")
+parser.add_argument("-a","--cal",dest="cal",nargs='+',help="name of calibration file or calibration filelist")
+parser.add_argument("--cal_period",dest="cal_period",default=0,type=np.float64,help="period of the calibration fits file (s)")
 parser.add_argument("-o","--output",dest="output",default="psr",help="output file name")
 parser.add_argument("-f","--frequency",dest='freqrange',default=0,help="output frequency range (MHz) in form start_freq,end_freq")
 parser.add_argument('-d','--dm',dest='dm',default=0,type=np.float64,help="dispersion measure")
-parser.add_argument('-p','--period',dest='period',default=0,type=np.float64,help="dispersion measure")
+parser.add_argument('-p','--period',dest='period',default=0,type=np.float64,help="pulsar period (s)")
 parser.add_argument('-n','--pulsar_name',default=0,dest='psr_name',help='input pulsar name')
 parser.add_argument('-e','--pulsar_ephemeris',default=0,dest='par_file',help='input pulsar parameter file')
 parser.add_argument("-c","--coefficients_num",dest="ncoeff",default=12,type=int,help="numbers of Chebyshev polynomial coefficients on time axis")
@@ -41,59 +43,109 @@ file_t0=[]
 file_time=[]
 file_len=[]
 #
-def file_error(para):
-	parser.error("Files have different parameters: "+para+".")
+def file_error(para,filetype):
+	parser.error("Fits "+filetype+" have different parameters: "+para+".")
 #
-for i in np.arange(filenum):
-	if not os.path.isfile(filelist[i]):
-		parser.error('Fits file name is invalid.')
-	f=ps.open(filelist[i],mmap=True)
+telename,pol_type,npol,nchan,freq,bandwidth,tsamp,nsblk,bw_sign,stt_imjd,stt_smjd,stt_offs,nsub,offs_sub='','',0,0,0,0.0,0.0,0,True,0,0,0.0,0,0.0
+def file_check(fname,notfirst=True,filetype='data'):
+	if not os.path.isfile(fname):
+		parser.error('Fits '+filetype+' name is invalid.')
+	try:
+		f=ps.open(filelist[i],mmap=True)
+	except:
+		parser.error('Fits '+filetype+' is invalid.')
 	head=f['PRIMARY'].header
 	subint=f['SUBINT']
 	subint_header=subint.header
 	subint_data=subint.data[0]
-	if i==0:
+	global telename,pol_type,npol,nchan,freq,bandwidth,tsamp,nsblk,bw_sign,stt_imjd,stt_smjd,stt_offs,nsub
+	if not notfirst:
 		telename=head['TELESCOP']
 		npol=subint_header['NPOL']
 		nchan=head['OBSNCHAN']
 		freq=head['OBSFREQ']
 		bandwidth=subint_header['NCHAN']*subint_header['CHAN_BW']
+		bw_sign=(bandwidth>0)
+		bandwidth=np.abs(bandwidth)
 		tsamp=subint_header['TBIN']
 		nsblk=subint_header['NSBLK']
+		pol_type=subint_header['POL_TYPE']
 	else:
-		# if telename!=head['TELESCOP']:
-			# file_error('telescope name')
-		# elif npol!=subint_header['NPOL']:
-			# file_error('number of polorisations')
-		# elif nchan!=head['OBSNCHAN']:
-			# file_error('number of channels')
+		if telename!=head['TELESCOP']:
+			file_error('telescope name',filetype)
+		if pol_type!=subint_header['POL_TYPE']:
+			file_error('polarisation type',filetype)
+		if npol!=subint_header['NPOL']:
+			file_error('number of polorisations',filetype)
+		if nchan!=head['OBSNCHAN']:
+			file_error('number of channels',filetype)
 		if freq!=head['OBSFREQ']:
-			file_error('central frequency')
-		elif bandwidth!=subint_header['NCHAN']*subint_header['CHAN_BW']:
-			file_error('bandwidth')
-		elif tsamp!=subint_header['TBIN']:
-			file_error('sampling time')
+			file_error('central frequency',filetype)
+		if bandwidth!=np.abs(subint_header['NCHAN']*subint_header['CHAN_BW']):
+			file_error('bandwidth',filetype)
+		if tsamp!=subint_header['TBIN']:
+			file_error('sampling time',filetype)
 		#
-	bw_sign=(bandwidth>0)
-	bandwidth=np.abs(bandwidth)
 	stt_imjd=head['STT_IMJD']
 	stt_smjd=head['STT_SMJD']
 	stt_offs=head['STT_OFFS']
 	nsub=subint_header['NAXIS2']
-	#
-	subint_t0=(subint_data['OFFS_SUB']-tsamp*nsblk/2.0+stt_smjd+stt_offs)/86400.0+stt_imjd
-	file_time.append([subint_data['OFFS_SUB']-tsamp*nsblk/2.0,stt_smjd,stt_offs,stt_imjd])
-	file_len.append(nsub*nsblk)
-	file_t0.append(subint_t0)
+	offs_sub=subint_data['OFFS_SUB']
 	del subint_data
 	f.close()
+#
+for i in np.arange(filenum):
+	file_check(filelist[i],notfirst=i)
+	#
+	subint_t0=(offs_sub-tsamp*nsblk/2.0+stt_smjd+stt_offs)/86400.0+stt_imjd
+	file_time.append([offs_sub-tsamp*nsblk/2.0,stt_smjd,stt_offs,stt_imjd])
+	file_len.append(nsub*nsblk)
+	file_t0.append(subint_t0)
 #
 file_len,file_t0,filelist,file_time=np.array(file_len),np.array(file_t0),np.array(filelist),np.array(file_time)
 sorts=np.argsort(file_t0)
 file_len,file_t0,filelist,file_time=file_len[sorts],np.sort(file_t0),filelist[sorts],file_time[sorts]
 if len(file_len)>1:
 	if np.max(np.abs((file_len*tsamp/86400.0+file_t0)[:-1]-file_t0[1:]))>(tsamp/86400.0):
-		parser.error("Files are not continuous.")
+		parser.error("Data files are not continuous.")
+#
+if args.cal:
+	command.append('-a ')
+	if len(args.cal)==1:
+		if args.cal[0][-3:]=='.ld':
+			noise_mark='ld'
+			noise=ld.ld(args.cal[0])
+			noise_info=noise.read_info()
+			if noise_info['mode']!='cal':
+				parser.error("LD file is not caliration file.")
+			elif telename!=noise_info['telename']:
+				parser.error("LD calibration file has different telescope name.")
+			elif nchan!=int(noise_info['nchan']):
+				parser.error("LD calibration file has different channel number.")
+		else:
+			noise_mark='fits'
+	else:
+		noise_mark='fits'
+	if noise_mark=='fits':
+		if not args.cal_period:
+			parser.error("Noise period is not given.")
+		noiselist=args.cal
+		noisenum=len(noiselist)
+		noise_t0,noise_len=[],[]
+		for i in np.arange(noisenum):
+			file_check(noiselist[i],filetype='noise')
+			subint_t0=(offs_sub-tsamp*nsblk/2.0+stt_smjd+stt_offs)/86400.0+stt_imjd
+			noise_len.append(nsub*nsblk)
+			noise_t0.append(subint_t0)
+		#
+		noise_t0,noise_len,noiselist=np.array(noise_t0),np.array(noise_len),np.array(noiselist)
+		sorts=np.argsort(noise_t0)
+		noise_t0,noise_len,noiselist=noise_t0[sorts],noise_len[sorts],noiselist[sorts]
+		if len(noise_len)>1:
+			if np.max(np.abs((noise_len*tsamp/86400.0+noise_t0)[:-1]-noise_t0[1:]))>(tsamp/86400.0):
+				parser.error("Noise files are not continuous.")
+else:
+	noise_mark=''
 #
 channel_width=bandwidth*1.0/nchan
 if args.freqrange:
@@ -212,6 +264,59 @@ if args.reverse:
 command=' '.join(command)
 info['history']=command
 #
+if noise_mark=='fits':
+	sys.stdout.write('Processing the noise file...\n')
+	noisen=np.int64(args.cal_period//tsamp)
+	noise_data=np.zeros([noisen,npol,nchan_new])
+	noise_cum=np.zeros(noisen)
+	cumsub=0
+	for n in np.arange(noisenum):
+		f=ps.open(noiselist[n],mmap=True)
+		fsub=f['SUBINT'].header['naxis2']
+		for i in np.arange(fsub):
+			dtmp=f['SUBINT'].data[i]
+			data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
+			del f['SUBINT'].data
+			if args.reverse or (not bw_sign):
+				if nchan==chanend:
+					data=data[:,:,(nchan-chanstart-1)::-1]
+				else:
+					data=data[:,:,(nchan-chanstart-1):(nchan-chanend-1):-1]
+			else:
+				data=data[:,:,chanstart:chanend]
+			noise_t=np.int64((np.arange(nsblk)+cumsub*nsblk)*tsamp%args.cal_period//tsamp)
+			for k in np.arange(nsblk):
+				tmp_noise_t=noise_t[k]
+				if tmp_noise_t==noisen:
+					continue
+				noise_data[tmp_noise_t]+=data[k]
+				noise_cum[tmp_noise_t]+=1
+			cumsub+=1
+		f.close()
+	tmp_noise=noise_data[:,0].sum(1)/noise_cum
+	sorts=np.argsort(tmp_noise)
+	noise_data,noise_cum=noise_data[sorts],noise_cum[sorts]
+	noisen_center=np.int64(noisen//2)
+	noise_off=noise_data[3:(noisen_center-1)].sum(0)/noise_cum[3:(noisen_center-1)].sum().reshape(-1,1)
+	noise_on=noise_data[(noisen_center+2):-3].sum(0)/noise_cum[(noisen_center+2):-3].sum().reshape(-1,1)-noise_off
+	noise_a12,noise_a22=noise_on[:2]
+	noise_dphi=np.arctan2(noise_on[3],noise_on[2])
+	noise_cos,noise_sin=np.cos(noise_dphi),np.sin(noise_dphi)
+elif noise_mark=='ld':
+	noise_a12,noise_a22,noise_cos,noise_sin=noise.read_period(0)[chanstart:chanend,0].T
+if args.cal:
+	info['cal_a1']=noise_a12
+	info['cal_a2']=noise_a22
+	info['cal_dphi']=noise_dphi
+	noise_a12=1./noise_a12
+	noise_a22=1./noise_a22
+	noise_a1a2=noise_a12*noise_a22
+	noise_a1a2=np.where(noise_a1a2>0,np.sqrt(noise_a1a2),0)
+	noise_cos=noise_cos*noise_a1a2
+	noise_sin=noise_sin*noise_a1a2
+	noise_a1p2=(noise_a12+noise_a22)/2.0
+	noise_a1m2=(noise_a12-noise_a22)/2.0
+#
 if args.verbose:
 	sys.stdout.write('Constructing the output file...\n')
 #
@@ -319,6 +424,25 @@ elif info['mode']=='single':
 	info['nsub']=nperiod
 info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
 d.write_shape([nchan_new,info['nsub'],nbin,npol])
+#
+def write_data(ldfile,data,startbin,channum):
+	if args.cal:
+		if pol_type=='AABBCRCI':
+			a12,a22,ncos,nsin=noise_a12[channum],noise_a22[channum],noise_cos[channum],noise_sin[channum]
+			aa,bb,cr,ci=data.T
+			aa0,bb0,u,v=a12*aa,a22*bb,ncos*cr+nsin*ci,-nsin*cr+ncos*ci
+			i,q=aa0+bb0,aa0-bb0
+			data=np.array([i,q,u,v]).T
+		elif pol_type=='IQUV':
+			a1p2,a1m2,ncos,nsin=noise_a1p2[channum],noise_a1m2[channum],noise_cos[channum],noise_sin[channum]
+			i,q,u,v=data.T
+			i,q,u,v=a1p2*i-a1m2*q,a1p2*q-a1m2*i,ncos*u+nsin*v,-nsin*u+ncos*v
+			data=np.array([i,q,u,v]).T
+		info['pol_type']='IQUV'
+	else:
+		info['pol_type']=pol_type
+	d.__write_chanbins_add__(data,startbin,channum)
+#
 cumsub=0
 def gendata(cums,nsub,data):
 	data=np.concatenate((np.zeros([2,npol,nchan]),data,np.zeros([2,npol,nchan])),axis=0).transpose(2,1,0)
@@ -334,6 +458,7 @@ def gendata(cums,nsub,data):
 	else:
 		dt=(np.arange(nsblk*cums-2,nsblk*cums+nsub+2)*tsamp+time0[:-1].sum()-delay-t0)/(t1-t0)*2-1
 	for f in np.arange(nchan_new):
+		if f+chanstart in zchan: continue
 		if args.period:
 			if dm:
 				phase=(dt+dm/df[f]**2*4148808.0)/period
@@ -383,7 +508,7 @@ def gendata(cums,nsub,data):
 						tpsub[f,phaseres1:]+=tpdata[:(nbin-phaseres1)]
 						tpdata=tpdata[(nbin-phaseres1):].reshape(-1,nbin,npol)
 						file_sub_data[0]=tpsub[f]+tpdata.sum(0)
-					d.__write_chanbins_add__(file_sub_data.reshape(-1,npol),startsub*nbin,f)
+					write_data(d,file_sub_data.reshape(-1,npol),startsub*nbin,f)
 				else:
 					periodres_left=sub_nperiod-periodres
 					periodres_right=(file_nsub-1)*sub_nperiod-periodres
@@ -398,10 +523,9 @@ def gendata(cums,nsub,data):
 					file_sub_data[-1,:(nphase-phaseres_right1)]+=tpdata[phaseres_right1:]
 					if tpsubn[f]==startsub:
 						file_sub_data[0]+=tpsub[f]
-						d.__write_chanbins__(file_sub_data[:-1].reshape(-1,npol),startsub*nbin,f)
 					else:
 						file_sub_data[1]+=tpsub[f]
-						d.__write_chanbins_add__(file_sub_data[:-1].reshape(-1,npol),startsub*nbin,f)
+					write_data(d,file_sub_data[:-1].reshape(-1,npol),startsub*nbin,f)
 					tpsub[f]=file_sub_data[-1]
 					tpsubn[f]=startsub+file_nsub-1
 			elif file_nperiod>1:
