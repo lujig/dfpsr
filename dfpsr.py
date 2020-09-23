@@ -6,10 +6,8 @@ import argparse as ap
 import os,sys,time,ld
 import mpmath as mm
 mm.mp.dps=30
-try:
-	import astropy.io.fits as ps
-except:
-	import pyfits as ps
+import astropy.io.fits as ps
+import astropy.time as at
 #
 version='JigLu_20200923'
 #
@@ -389,8 +387,9 @@ else:
 	coeff[0,0]-=phase0
 	roots=nc.chebroots(coeff[:,0])
 	roots=np.real(roots[np.isreal(roots)])
-	info['stt_time']=(roots[np.argmin(np.abs(roots-dt[0]))]+1)/2.0*(t1-t0)+t0
+	info['stt_sec']=(roots[np.argmin(np.abs(roots-dt[0]))]+1)/2.0*(t1-t0)+t0
 	info['stt_date']=time0[-1]
+	info['stt_time']=at.Time(info['stt_date']+info['stt_sec']/86400.0,scale='utc',format='mjd').tdb.value
 	info['phase0']=int(phase0)+tmp
 	phase-=phase0
 #

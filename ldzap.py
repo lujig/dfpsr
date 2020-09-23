@@ -7,7 +7,7 @@ from matplotlib.figure import Figure
 import matplotlib.lines as ln
 import ld,os,copy
 #
-version='JigLu_20180511'
+version='JigLu_20200923'
 parser=ap.ArgumentParser(prog='ldzap',description='Zap the frequency domain interference in ld file.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
@@ -25,7 +25,7 @@ if 'compressed' in info.keys():
 	nperiod=int(info['nsub_new'])
 else:
 	nchan=int(info['nchan'])
-	if 'test' in info.keys():
+	if info['mode']=='test':
 		nbin=1
 		nperiod=int(d.read_shape()[1])
 	else:
