@@ -11,7 +11,7 @@ try:
 except:
 	import pyfits as ps
 #
-version='JigLu_20200829'
+version='JigLu_20200923'
 #
 parser=ap.ArgumentParser(prog='dfsub',description='Dedisperse and Fold the psrfits data.',epilog='Ver '+version)
 parser.add_argument('-v','--version', action='version', version=version)
@@ -573,7 +573,7 @@ if args.test:
 	test=ld.ld('test.ld')
 	test.write_shape([nchan_new,filenum,1,1])
 	test.__write_bin_segment__(testdata,0)
-	testinfo={'nbin':nbin,'test':True,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart}
+	testinfo={'nbin':nbin,'mode':test,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart}
 	test.write_info(testinfo)
 #
 d.write_info(info)

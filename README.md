@@ -4,22 +4,27 @@ dedisperse and fold search mode psrfits data
 dfpsr.py: 
 	Dedisperse and fold the search mode psrfits file with pulsar name (or PSRCAT ephemris file, or DM and period). The folded file is saved as ld format, which is a new format to save pulsar data and information. The data in ld file always have 4 dimensions (nchan, nsub, nbin, npol).
 
-	dfpsr.py [-f FREQ_RANGE] [-d DM] [-p PERIOD] [-n PSR_NAME] [-e PAR_FILE] [-b NBIN] filename [filename ...]
+	dfpsr.py [-f FREQ_RANGE] [-d DM] [-p PERIOD] [-n PSR_NAME] [-e PAR_FILE] [-b NBIN] [-a CAL [CAL ...]] [--cal_period CAL_PERIOD] [-s SUBINT] filename [filename ...]
 
-compress.py:
+ldcom.py:
 	Compress the ld format file with given nchan, nsub, nbin, and save resutls in a new ld file.
 
-	compress.py [-f NCHAN] [-F] [-t NSUB] [-T] [-b NBIN] [-B] [-P] [-r FREQ_RANGE] [-s SUBINT_RANGE] filename
+	ldcom.py [-f NCHAN] [-F] [-t NSUB] [-T] [-b NBIN] [-B] [-P] [-r FREQ_RANGE] [-s SUBINT_RANGE] filename
 
-para.py:
+ldpar.py:
 	View the information of ld format file.
 
-	para.py [-c PARAMETER_NAME_LIST] filename
+	ldpar.py [-c PARAMETER_NAME_LIST] filename
 
-plot.py:
+ldplt.py:
 	Plot the time-domain or frequency-domain image or pulse profile of a ld file.
 
-	plot.py [-f] [-t] [-p] [-b PHASE_RANGE] [-r FREQ_RANGE] [-s SUBINT_RANGE] filename
+	ldplt.py [-f] [-t] [-p] [-b PHASE_RANGE] [-r FREQ_RANGE] [-s SUBINT_RANGE] filename
+
+ldcal.py:
+	Obtain the calibration ld file with periodic noise fits file.
+
+	ldcal.py [--cal_period CAL_PERIOD] filename [filename ...]
 
 ldzap.py:
 	Zap the frequency domain interference in ld file.
@@ -33,9 +38,6 @@ lddm.py:
 
 ld.py:
 	Provide some functions to access ld format data. With these functions, one can read data and information of ld file, or write data and information in a ld file.
-
-df_assist.py:
-	Help in dedisperse and fold data with multi-cpu.
 
 Independence: 
 

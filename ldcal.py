@@ -9,7 +9,7 @@ try:
 except:
 	import pyfits as ps
 #
-version='JigLu_20200829'
+version='JigLu_20200923'
 #
 parser=ap.ArgumentParser(prog='ldcal',description='Dedisperse and Fold the psrfits data.',epilog='Ver '+version)
 parser.add_argument('-v','--version', action='version', version=version)
