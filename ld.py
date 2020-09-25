@@ -54,7 +54,7 @@ class ld():
 	#
 	def write_chan(self,data,chan_num):
 		data=data.reshape(-1)
-		ndata_chan=int(np.array(self.__size__[2:]).prod())
+		ndata_chan=np.int64(np.array(self.__size__[2:]).prod())
 		if ndata_chan!=data.size:
 			raise Exception('Data size unmatches the file.')
 		if chan_num>self.__size__[1]:
@@ -67,7 +67,7 @@ class ld():
 		self.__refresh_size__()
 	#
 	def read_chan(self,chan_num):
-		ndata_chan=int(np.array(self.__size__[2:]).prod())
+		ndata_chan=np.int64(np.array(self.__size__[2:]).prod())
 		if chan_num>self.__size__[1]:
 			raise Exception('The input channel number is larger than total channel number of file.')
 		self.file=open(self.name,'rb')
@@ -86,8 +86,8 @@ class ld():
 		return data
 	#
 	def write_period(self,data,p_num):
-		ndata_period=int(self.__size__[3]*self.__size__[4])
-		ndata_chan=int(ndata_period*self.__size__[2])
+		ndata_period=np.int64(self.__size__[3]*self.__size__[4])
+		ndata_chan=np.int64(ndata_period*self.__size__[2])
 		if (self.__size__[1]*ndata_period)!=data.size:
 			raise Exception('Data size unmatches the file.')
 		if p_num>self.__size__[2]:
@@ -102,8 +102,8 @@ class ld():
 		self.__refresh_size__()
 	#
 	def read_period(self,p_num):
-		ndata_period=int(self.__size__[3]*self.__size__[4])
-		ndata_chan=int(ndata_period*self.__size__[2])
+		ndata_period=np.int64(self.__size__[3]*self.__size__[4])
+		ndata_chan=np.int64(ndata_period*self.__size__[2])
 		if p_num>self.__size__[2]:
 			raise Exception('The input period number is larger than total period number of file.')
 		data=np.zeros([self.__size__[1],self.__size__[3],self.__size__[4]])
@@ -115,7 +115,7 @@ class ld():
 		return data
 	#
 	def __write_bin_segment__(self,data,bin_start):
-		ndata_chan=int(np.array(self.__size__[2:]).prod())
+		ndata_chan=np.int64(np.array(self.__size__[2:]).prod())
 		if self.__size__[1]!=len(data):
 			raise Exception('Data size unmatches the file.')
 		if (bin_start*self.__size__[4]+np.array(data.shape[1:]).prod())>ndata_chan or bin_start<0:
@@ -140,7 +140,7 @@ class ld():
 		self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
 		data0=np.zeros_like(data,dtype=np.float64)
 		data0tmp=self.file.read(size*8)
-		length0=int(len(data0tmp)/8)
+		length0=np.int64(len(data0tmp)/8)
 		data0[:length0]=np.array(st.unpack('>'+str(length0)+'d',data0tmp))
 		self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
 		self.file.write(st.pack('>'+str(size)+'d',*(data+data0)))
@@ -161,7 +161,7 @@ class ld():
 		self.__refresh_size__()
 	#
 	def __read_bin_segment__(self,bin_start,bin_num):
-		ndata_chan=int(np.array(self.__size__[2:]).prod())
+		ndata_chan=np.int64(np.array(self.__size__[2:]).prod())
 		if ((bin_start+bin_num)*self.__size__[4])>ndata_chan or bin_start<0:
 			raise Exception('The input bin number is overrange.')
 		data=np.zeros([self.__size__[1],bin_num,self.__size__[4]])
@@ -173,7 +173,7 @@ class ld():
 		return data
 	#
 	def chan_scrunch(self,select_chan=[],start_period=0,end_period=0):
-		ndata_chan=int(np.array(self.__size__[2:]).prod())
+		ndata_chan=np.int64(np.array(self.__size__[2:]).prod())
 		if len(select_chan)==0:
 			select_chan=np.arange(self.__size__[1])
 		elif not set(select_chan).issubset(set(np.arange(self.__size__[1]))):
@@ -195,7 +195,7 @@ class ld():
 		return data
 	#
 	def period_scrunch(self,start_period=0,end_period=0,select_chan=[]):
-		ndata_chan=int(np.array(self.__size__[2:]).prod())
+		ndata_chan=np.int64(np.array(self.__size__[2:]).prod())
 		if len(select_chan)==0:
 			select_chan=np.arange(self.__size__[1])
 		elif not set(select_chan).issubset(set(np.arange(self.__size__[1]))):
