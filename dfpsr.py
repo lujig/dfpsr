@@ -8,6 +8,7 @@ import mpmath as mm
 mm.mp.dps=30
 import astropy.io.fits as ps
 import astropy.time as at
+import astropy as ar
 #
 version='JigLu_20200925'
 #
@@ -335,12 +336,16 @@ end_time=stt_time+tsamp*nbin0/86400.0+60./86400
 stt_time-=60./86400
 stt_time=str(int(stt_time))+str(stt_time%1)[1:]
 end_time=str(int(end_time))+str(end_time%1)[1:]
+time0=file_time[0]
 if args.period or (not pepoch):
 	if args.period:
 		period=args.period
 	phase=np.arange(nbin0)*tsamp/period
 	info['phase0']=0
 	nperiod=int(np.ceil(np.max(phase)))
+	stt_sec=time0[:-1].sum()-delay
+	stt_date=time0[-1]+stt_sec//86400
+	stt_sec=stt_sec%86400
 else:
 	os.popen('tempo2 -f '+par_file+' -pred \"'+telename+' '+stt_time+' '+end_time+' '+str(freq_start)+' '+str(freq_end)+' '+str(args.ncoeff)+' 2 '+str(int(tsamp*nbin0)+150)+'\"').close()
 	predictor_file='t2pred.dat'
@@ -380,19 +385,24 @@ else:
 	t0=np.float64(t0-time0[-1])*86400.0
 	t1=np.float64(t1-time0[-1])*86400.0
 	dt=(np.array([0,nbin0])*tsamp+time0[:-1].sum()-delay-t0)/(t1-t0)*2-1
-	df=(np.array([freq_start,freq_end])-f0)/(f1-f0)*2-1
-	phase=nc.chebval2d(dt,np.array([df[1],df[1]]),coeff)+dispc/freq_end**2
+	coeff1=coeff.sum(1)
+	phase=nc.chebval(dt,coeff1)+dispc/freq_end**2
 	phase0=np.ceil(phase[0])
-	period=nbin0*tsamp/(phase[1]-phase[0])
 	nperiod=int(np.floor(phase[-1]-phase0+dispc/freq_start**2-dispc/freq_end**2))
 	coeff[0,0]-=phase0
-	roots=nc.chebroots(coeff[:,0])
+	roots=nc.chebroots(coeff1)
 	roots=np.real(roots[np.isreal(roots)])
-	info['stt_sec']=(roots[np.argmin(np.abs(roots-dt[0]))]+1)/2.0*(t1-t0)+t0
-	info['stt_date']=time0[-1]
-	info['stt_time']=at.Time(info['stt_date']+info['stt_sec']/86400.0,scale='utc',format='mjd').tdb.value
+	root=[np.argmin(np.abs(roots-dt[0]))][0]
+	period=1./np.polyval(np.polyder(nc.cheb2poly(coeff1)[::-1]),root)/2.0*(t1-t0)
+	stt_sec=(root+1)/2.0*(t1-t0)+t0
+	stt_date=time0[-1]+stt_sec//86400
+	stt_sec=stt_sec%86400
 	info['phase0']=int(phase0)+tmp
 	phase-=phase0
+#
+info['stt_sec']=stt_sec
+info['stt_date']=stt_date
+info['stt_time']=stt_date+stt_sec/86400.0
 #
 info['nperiod']=nperiod
 info['period']=period
