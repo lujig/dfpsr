@@ -4,7 +4,7 @@ dedisperse and fold search mode psrfits data
 dfpsr.py: 
 	Dedisperse and fold the search mode psrfits file with pulsar name (or PSRCAT ephemris file, or DM and period). The folded file is saved as ld format, which is a new format to save pulsar data and information. The data in ld file always have 4 dimensions (nchan, nsub, nbin, npol).
 
-	dfpsr.py [-f FREQ_RANGE] [-d DM] [-p PERIOD] [-n PSR_NAME] [-e PAR_FILE] [-b NBIN] [-a CAL [CAL ...]] [--cal_period CAL_PERIOD] [-s SUBINT] filename [filename ...]
+	dfpsr.py [-f FREQ_RANGE] [-d DM] [-p PERIOD] [-n PSR_NAME] [-e PAR_FILE] [-b NBIN] [-a CAL [CAL ...]] [--cal_period CAL_PERIOD] [-s SUBINT] [-m MULTI] filename [filename ...]
 
 ldcom.py:
 	Compress the ld format file with given nchan, nsub, nbin, and save resutls in a new ld file.
@@ -43,4 +43,4 @@ Independence:
 
 	Software: PSRCAT and TEMPO2
 
-	Python module: numpy, matplotlib, astropy (or pyfits) and Tkinter
+	Python module: numpy, matplotlib, astropy, mpmath and Tkinter

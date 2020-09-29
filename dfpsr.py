@@ -7,12 +7,11 @@ import os,sys,time,ld
 import mpmath as mm
 mm.mp.dps=30
 import astropy.io.fits as ps
-import astropy.time as at
-import astropy as ar
+from multiprocessing import Pool
 #
 version='JigLu_20200925'
 #
-parser=ap.ArgumentParser(prog='dfsub',description='Dedisperse and Fold the psrfits data.',epilog='Ver '+version)
+parser=ap.ArgumentParser(prog='dfpsr',description='Dedisperse and Fold the psrfits data.',epilog='Ver '+version)
 parser.add_argument('-v','--version', action='version', version=version)
 parser.add_argument('--verbose', action="store_true",default=False,help="print detailed information")
 parser.add_argument("filename",nargs='+',help="name of file or filelist")
@@ -30,7 +29,7 @@ parser.add_argument("-s","--sublen",dest="subint",default=0,type=np.float64,help
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
 parser.add_argument("-r","--reverse",action="store_true",default=False,help="reverse the band")
 parser.add_argument("-l","--large_mem",action="store_true",default=False,help="large RAM")
-parser.add_argument("-t","--test",action="store_true",default=False,help="generate a subint scrunched test datafile test.npy to help in judging noisy channel")
+parser.add_argument("-m","--multi",dest="multi",default=0,type=int,help="number of processes")
 args=(parser.parse_args())
 command=['dfpsr.py']
 #
@@ -98,14 +97,14 @@ for i in np.arange(filenum):
 	#
 	subint_t0=(offs_sub-tsamp*nsblk/2.0+stt_smjd+stt_offs)/86400.0+stt_imjd
 	file_time.append([offs_sub-tsamp*nsblk/2.0,stt_smjd,stt_offs,stt_imjd])
-	file_len.append(nsub*nsblk)
+	file_len.append(nsub)
 	file_t0.append(subint_t0)
 #
 file_len,file_t0,filelist,file_time=np.array(file_len),np.array(file_t0),np.array(filelist),np.array(file_time)
 sorts=np.argsort(file_t0)
 file_len,file_t0,filelist,file_time=file_len[sorts],np.sort(file_t0),filelist[sorts],file_time[sorts]
 if len(file_len)>1:
-	if np.max(np.abs((file_len*tsamp/86400.0+file_t0)[:-1]-file_t0[1:]))>(tsamp/86400.0):
+	if np.max(np.abs((file_len*nsblk*tsamp/86400.0+file_t0)[:-1]-file_t0[1:]))>(tsamp/86400.0):
 		parser.error("Data files are not continuous.")
 #
 if args.cal:
@@ -134,14 +133,14 @@ if args.cal:
 		for i in np.arange(noisenum):
 			file_check(noiselist[i],filetype='noise')
 			subint_t0=(offs_sub-tsamp*nsblk/2.0+stt_smjd+stt_offs)/86400.0+stt_imjd
-			noise_len.append(nsub*nsblk)
+			noise_len.append(nsub)
 			noise_t0.append(subint_t0)
 		#
 		noise_t0,noise_len,noiselist=np.array(noise_t0),np.array(noise_len),np.array(noiselist)
 		sorts=np.argsort(noise_t0)
 		noise_t0,noise_len,noiselist=noise_t0[sorts],noise_len[sorts],noiselist[sorts]
 		if len(noise_len)>1:
-			if np.max(np.abs((noise_len*tsamp/86400.0+noise_t0)[:-1]-noise_t0[1:]))>(tsamp/86400.0):
+			if np.max(np.abs((noise_len*nsblk*tsamp/86400.0+noise_t0)[:-1]-noise_t0[1:]))>(tsamp/86400.0):
 				parser.error("Noise files are not continuous.")
 else:
 	noise_mark=''
@@ -159,7 +158,7 @@ else:
 	chanstart,chanend=0,nchan
 nchan_new=chanend-chanstart
 #
-nbin=file_len.sum()
+nbin=file_len.sum()*nsblk
 stt_time=file_t0[0]+tsamp/2.0
 freq_start,freq_end=(np.array([chanstart,chanend])-0.5*nchan)*channel_width+freq
 info={'nbin_origin':nbin,'telename':telename,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart,'tsamp_origin':tsamp,'stt_time_origin':stt_time,'stt_time':stt_time,'npol':npol}
@@ -253,12 +252,13 @@ if len(name)>3:
 	if name[-3:]=='.ld':
 		name=name[:-3]
 #
-if args.test:
-	command.append('-t')
-	testdata=np.zeros([nchan_new,filenum])
-#
 if args.reverse:
 	command.append('-r')
+#
+if args.multi:
+	if args.multi>20:
+		parser.error('The processes number is too large!')
+	command.append('-m '+str(args.multi))
 #
 command=' '.join(command)
 info['history']=command
@@ -269,7 +269,6 @@ if noise_mark=='fits':
 	noisen=np.int64(args.cal_period//tsamp)
 	noise_data=np.zeros([noisen,npol,nchan_new],dtype=np.float64)
 	noise_cum=np.zeros(noisen)
-	cumsub=0
 	for n in np.arange(noisenum):
 		f=ps.open(noiselist[n],mmap=True)
 		fsub=f['SUBINT'].header['naxis2']
@@ -284,6 +283,7 @@ if noise_mark=='fits':
 					data=data[:,:,(nchan-chanstart-1):(nchan-chanend-1):-1]
 			else:
 				data=data[:,:,chanstart:chanend]
+			cumsub=noise_len[:n].sum()+i
 			noise_t=np.int64(np.round((np.arange(nsblk)+cumsub*nsblk)*tsamp%args.cal_period/tsamp))
 			for k in np.arange(nsblk):
 				tmp_noise_t=noise_t[k]
@@ -291,7 +291,6 @@ if noise_mark=='fits':
 					continue
 				noise_data[tmp_noise_t]+=data[k]
 				noise_cum[tmp_noise_t]+=1
-			cumsub+=1
 		f.close()
 	tmp_noise=noise_data[:,0].sum(1)/noise_cum
 	sorts=np.argsort(tmp_noise)
@@ -455,8 +454,7 @@ def write_data(ldfile,data,startbin,channum):
 		info['pol_type']=pol_type
 	d.__write_chanbins_add__(data.T,startbin,channum)
 #
-cumsub=0
-def gendata(cums,nsub,data):
+def gendata(cums,nsub,data,last=False):
 	data=np.concatenate((np.zeros([2,npol,nchan]),data,np.zeros([2,npol,nchan])),axis=0).transpose(2,1,0)
 	if args.reverse or (not bw_sign):
 		if nchan==chanend:
@@ -489,13 +487,12 @@ def gendata(cums,nsub,data):
 			startphase,phaseres0=np.divmod(newphase[0],temp_multi)
 			phaseres0=np.int64(phaseres0)
 			nphase=np.int64(np.ceil((newphase[-1]+1-newphase[0]+phaseres0)*1.0/temp_multi))
-			tpdata=np.concatenate((np.zeros([npol,phaseres0]),tpdata,np.zeros([npol,nphase*temp_multi-newphase[-1]-1+newphase[0]-phaseres0])),axis=1).reshape(npol,nphase,temp_multi).sum(1)
+			tpdata=np.concatenate((np.zeros([npol,phaseres0]),tpdata,np.zeros([npol,nphase*temp_multi-newphase[-1]-1+newphase[0]-phaseres0])),axis=1).reshape(npol,nphase,temp_multi).sum(2)
 		else:
 			startphase=newphase[0]
 			nphase=newphase.size
 		if info['mode']=='single':
 			write_data(d,tpdata,startphase,f)
-			#d.__write_chanbins_add__(tpdata,startphase,f)
 		else:
 			startperiod,phaseres1=np.divmod(startphase,nbin)
 			phaseres1=np.int64(phaseres1)
@@ -534,60 +531,66 @@ def gendata(cums,nsub,data):
 					file_sub_data[:,0,phaseres1:]+=tpdata[:,:phaseres_left1]
 					file_sub_data[:,-1]=tpdata[:,phaseres_right:phaseres_right1].reshape(npol,file_nperiod-1-periodres_right,nbin).sum(1)
 					file_sub_data[:,-1,:(nphase-phaseres_right1)]+=tpdata[:,phaseres_right1:]
-					if tpsubn[f]==startsub:
+					if tpsubn[f]<=startsub:
 						file_sub_data[:,0]+=tpsub[f]
 					else:
 						file_sub_data[:,1]+=tpsub[f]
 					write_data(d,file_sub_data[:,:-1].reshape(npol,-1),startsub*nbin,f)
 					tpsub[f]=file_sub_data[:,-1]
 					tpsubn[f]=startsub+file_nsub-1
-			elif file_nperiod>1:
-				phaseres_left=nbin-phaseres1
-				phaseres_right=(file_nperiod-1)*nbin-phaseres1
-				tpsub[f,:,phaseres1:]+=tpdata[:,:phaseres_left]
-				tpsub[f,:,:(nphase-phaseres_right)]+=tpdata[:,phaseres_right:]
-				if file_nperiod>2:
-					tpsub[f]+=tpdata[:,phaseres_left:phaseres_right].reshape(npol,file_nperiod-2,nbin).sum(1)
+					if args.multi and last:
+						write_data(d,tpsub[f],tpsubn[f]*nbin,f)
 			else:
-				tpsub[f,:,startphase:(startphase+tpdata.shape[1])]+=tpdata
+				if file_nperiod>1:
+					phaseres_left=nbin-phaseres1
+					phaseres_right=(file_nperiod-1)*nbin-phaseres1
+					tpsub[f,:,phaseres1:]+=tpdata[:,:phaseres_left]
+					tpsub[f,:,:(nphase-phaseres_right)]+=tpdata[:,phaseres_right:]
+					if file_nperiod>2:
+						tpsub[f]+=tpdata[:,phaseres_left:phaseres_right].reshape(npol,file_nperiod-2,nbin).sum(1)
+				else:
+					tpsub[f,:,phaseres1:(phaseres1+tpdata.shape[1])]+=tpdata
+				if args.multi and last:
+					write_data(d,tpsub[f],startsub*nbin,f)
 #
 if args.verbose:
 	sys.stdout.write('Dedispersing and folding the data...\n')
 #
-timemark=time.time()
-for n in np.arange(filenum):
+def dealdata(filelist,n):
 	if args.verbose:
 		sys.stdout.write('Processing the '+str(n+1)+'th fits file...\n')
+		timemark=time.time()
 	f=ps.open(filelist[n],mmap=True)
 	fsub=f['SUBINT'].header['naxis2']
 	if args.large_mem:
+		cumsub=np.int64(file_len[:n].sum())
 		dtmp=f['SUBINT'].data
 		data=np.float64((dtmp['DATA']).reshape(fsub,nsblk,npol,nchan)*dtmp['dat_scl'].reshape(fsub,1,npol,nchan)+dtmp['dat_offs'].reshape(fsub,1,npol,nchan)).reshape(fsub*nsblk,npol,nchan)
 		del f['SUBINT'].data
 		f.close()
-		gendata(cumsub,file_len[n],data)
-		if args.test:
-			testdata[:,n]=data[:,0,:].sum(0)
-		cumsub+=fsub
+		gendata(cumsub,file_len[n]*nsblk,data,last=True)
 	else:
 		for i in np.arange(fsub):
+			cumsub=np.int64(file_len[:n].sum()+i)
 			dtmp=f['SUBINT'].data[i]
 			data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
 			del f['SUBINT'].data
-			gendata(cumsub,nsblk,data)
-			if args.test:
-				testdata[:,n]+=data[:,0,:].sum(0)
-			cumsub+=1
+			gendata(cumsub,nsblk,data,last=(i==(fsub-1)))
 		f.close()
 	if args.verbose:
 		sys.stdout.write('Processing the '+str(n+1)+'th fits file takes '+str(time.time()-timemark)+' second.\n')
-	timemark=time.time()
-if args.test:
-	test=ld.ld('test.ld')
-	test.write_shape([nchan_new,filenum,1,1])
-	test.__write_bin_segment__(testdata,0)
-	testinfo={'nbin':nbin,'mode':test,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart}
-	test.write_info(testinfo)
+#
+if args.multi:
+	pool=Pool(processes=args.multi)
+#
+for n in np.arange(filenum):
+	if args.multi:
+		pool.apply_async(dealdata,(filelist,n))
+	else:
+		dealdata(filelist,n)
+if args.multi:
+	pool.close()
+	pool.join()
 #
 d.write_info(info)
 #
