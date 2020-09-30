@@ -19,6 +19,7 @@ class ld():
 		if len(size)!=5:
 			raise Exception('Worng size of data.')
 		self.file.write(st.pack('>Q4I',*size))
+		self.file.flush()
 		self.file.close()
 		self.__size__=size
 	#
@@ -46,7 +47,8 @@ class ld():
 		self.__write_size__(self.__size__)
 		self.file=open(self.name,'rb+')
 		self.file.seek(24,0)
-		#self.file.truncate()
+		self.file.truncate()
+		self.file.flush()
 		self.file.close()
 	#
 	def read_shape(self):
@@ -63,6 +65,7 @@ class ld():
 		self.file.seek(24+chan_num*ndata_chan*8)
 		self.file.write(st.pack('>'+str(ndata_chan)+'d',*data))
 		#print self.file.tell(),ndata_chan,data.shape,chan_num
+		self.file.flush()
 		self.file.close()
 		self.__refresh_size__()
 	#
@@ -75,6 +78,16 @@ class ld():
 		data=np.array(st.unpack('>'+str(ndata_chan)+'d',self.file.read(ndata_chan*8)))
 		self.file.close()
 		return data.reshape(self.__size__[2:])
+	#
+	def read_data(self):
+		data_shape=np.int64(np.array(self.__size__[1:]))
+		data=np.zeros(data_shape,dtype=np.float64)
+		ndata_chan=np.int64(np.array(self.__size__[2:]).prod())
+		self.file=open(self.name,'rb')
+		for chan_num in range(self.__size__[1]):
+			self.file.seek(24+chan_num*ndata_chan*8)
+			data[chan_num]=np.array(st.unpack('>'+str(ndata_chan)+'d',self.file.read(ndata_chan*8))).reshape(self.__size__[2:])
+		return data
 	#
 	def __read_chan0__(self,chan_num,ndata_chan0):
 		if chan_num>self.__size__[1]:
@@ -98,6 +111,7 @@ class ld():
 			self.file.seek(24+ndata_chan*i*8+p_num*ndata_period*8)
 			self.file.write(st.pack('>'+str(ndata_period)+'d',*data[i]))
 		#print self.file.tell(),data.shape,ndata_chan,ndata_period,p_num
+		self.file.flush()
 		self.file.close()
 		self.__refresh_size__()
 	#
@@ -125,6 +139,7 @@ class ld():
 		for i in range(self.__size__[1]):
 			self.file.seek(24+ndata_chan*i*8+bin_start*8*self.__size__[4])
 			self.file.write(st.pack('>'+str(data.shape[1])+'d',*data[i]))
+		self.file.flush()
 		self.file.close()
 		self.__refresh_size__()
 	#
@@ -144,6 +159,7 @@ class ld():
 		data0[:length0]=np.array(st.unpack('>'+str(length0)+'d',data0tmp))
 		self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
 		self.file.write(st.pack('>'+str(size)+'d',*(data+data0)))
+		self.file.flush()
 		self.file.close()
 		self.__refresh_size__()
 	#
@@ -157,6 +173,7 @@ class ld():
 		self.file=open(self.name,'rb+')
 		self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
 		self.file.write(st.pack('>'+str(data.size)+'d',*data))
+		self.file.flush()
 		self.file.close()
 		self.__refresh_size__()
 	#
@@ -244,6 +261,7 @@ class ld():
 			else:
 				self.file.write(' '+str(info[key])+'\n')
 		self.file.truncate()
+		self.file.flush()
 		self.file.close()
 		self.__refresh_size__()
 	#

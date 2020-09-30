@@ -304,9 +304,7 @@ if noise_mark=='fits':
 elif noise_mark=='ld':
 	noise_a12,noise_a22,noise_cos,noise_sin=noise.read_period(0)[chanstart:chanend,0].T
 if args.cal:
-	info['cal_a1']=noise_a12
-	info['cal_a2']=noise_a22
-	info['cal_dphi']=noise_dphi
+	info['cal']=np.array([noise_a12,noise_a22,noise_cos,noise_sin]).T.reshape(-1)
 	noise_a12=np.where(noise_a12>0,1./noise_a12,0)
 	noise_a22=np.where(noise_a22>0,1./noise_a22,0)
 	noise_a1a2=noise_a12*noise_a22
@@ -454,7 +452,7 @@ def write_data(ldfile,data,startbin,channum):
 		info['pol_type']=pol_type
 	d.__write_chanbins_add__(data.T,startbin,channum)
 #
-def gendata(cums,nsub,data,last=False):
+def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 	data=np.concatenate((np.zeros([2,npol,nchan]),data,np.zeros([2,npol,nchan])),axis=0).transpose(2,1,0)
 	if args.reverse or (not bw_sign):
 		if nchan==chanend:
@@ -500,7 +498,6 @@ def gendata(cums,nsub,data,last=False):
 			startsub,periodres=np.divmod(startperiod,sub_nperiod)
 			periodres=np.int64(periodres)
 			file_nsub=np.int64(np.ceil((file_nperiod+periodres)*1.0/sub_nperiod))
-			global tpsub,tpsubn
 			if file_nsub>1 or newphase[-1]==totalbin-1:
 				file_sub_data=np.zeros([npol,file_nsub,nbin])
 				if newphase[-1]==totalbin-1:
@@ -552,6 +549,7 @@ def gendata(cums,nsub,data,last=False):
 					tpsub[f,:,phaseres1:(phaseres1+tpdata.shape[1])]+=tpdata
 				if args.multi and last:
 					write_data(d,tpsub[f],startsub*nbin,f)
+	return tpsub,tpsubn
 #
 if args.verbose:
 	sys.stdout.write('Dedispersing and folding the data...\n')
@@ -560,6 +558,12 @@ def dealdata(filelist,n):
 	if args.verbose:
 		sys.stdout.write('Processing the '+str(n+1)+'th fits file...\n')
 		timemark=time.time()
+	if info['mode']=='subint':
+		tpsub=np.zeros([nchan_new,npol,nbin],dtype=np.float64)
+		tpsubn=np.zeros(nchan_new)
+	elif info['mode']=='single':
+		tpsub=0
+		tpsubn=0
 	f=ps.open(filelist[n],mmap=True)
 	fsub=f['SUBINT'].header['naxis2']
 	if args.large_mem:
@@ -568,14 +572,14 @@ def dealdata(filelist,n):
 		data=np.float64((dtmp['DATA']).reshape(fsub,nsblk,npol,nchan)*dtmp['dat_scl'].reshape(fsub,1,npol,nchan)+dtmp['dat_offs'].reshape(fsub,1,npol,nchan)).reshape(fsub*nsblk,npol,nchan)
 		del f['SUBINT'].data
 		f.close()
-		gendata(cumsub,file_len[n]*nsblk,data,last=True)
+		tmp=gendata(cumsub,file_len[n]*nsblk,data,tpsub,tpsubn,last=True)
 	else:
 		for i in np.arange(fsub):
 			cumsub=np.int64(file_len[:n].sum()+i)
 			dtmp=f['SUBINT'].data[i]
 			data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
 			del f['SUBINT'].data
-			gendata(cumsub,nsblk,data,last=(i==(fsub-1)))
+			tpsub,tpsubn=gendata(cumsub,nsblk,data,tpsub,tpsubn,last=(i==(fsub-1)),first=i==0)
 		f.close()
 	if args.verbose:
 		sys.stdout.write('Processing the '+str(n+1)+'th fits file takes '+str(time.time()-timemark)+' second.\n')
