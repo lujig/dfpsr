@@ -4,7 +4,7 @@ import numpy.ma as ma
 import numpy.fft as fft
 from matplotlib.figure import Figure
 import argparse as ap
-import os,time,ld
+import os,time,ld,sys
 import warnings as wn
 #
 version='JigLu_20180508'
@@ -18,7 +18,7 @@ parser.add_argument('-b','--phase_range',default=0,dest='phase',help='limit the 
 parser.add_argument('-r','--frequency_range',default=0,dest='frequency',help='limit the frequency rangeFREQ0,FREQ1')
 parser.add_argument('-s','--subint_range',default=0,dest='subint',help='limit the subint range SUBINT0,SUBINT1')
 parser.add_argument('-o','--polynomial_order',default=0,dest='n',type=int,help='fit the back ground with Nth order polynomial')
-parser.add_argument('--polar',default=0,dest='polar',type=int,help='plot the specified polarization')
+parser.add_argument('--polar',default=0,dest='polar',type=int,help='plot the specified polarization (1234 for IQUV)')
 parser.add_argument('-c','--rotation',default=0,dest='rotation',type=np.float64,help='rotate the plot phase')
 parser.add_argument('-n',action='store_true',default=False,dest='norm',help='normalized the data at each channel or subint')
 parser.add_argument('-i',action='store_false',default=True,dest='title',help='hide file information above the figure')
@@ -37,7 +37,7 @@ if 'compressed' in info.keys():
 else:
 	nchan=int(info['nchan'])
 	nbin=int(info['nbin'])
-	nsub=int(info['nperiod'])
+	nsub=int(info['nsub'])
 	npol=int(info['npol'])
 freq_start=np.float64(info['freq_start'])
 freq_end=np.float64(info['freq_end'])
@@ -45,7 +45,7 @@ freq=(freq_start+freq_end)/2.0
 bw=freq_end-freq_start
 channel_width=(freq_end-freq_start)/nchan
 #
-plotflag=np.sum(map(np.bool,[args.fdomain,args.tdomain,args.profile]))
+plotflag=np.sum(list(map(np.bool,[args.fdomain,args.tdomain,args.profile])))
 if plotflag>1:
 	parser.error('At most one of flags -f, -t and -p is required.')
 elif plotflag==0:
@@ -66,6 +66,13 @@ if args.frequency:
 else:
 	frequency=np.array([freq_start,freq_end])
 	chan=[]
+#
+if args.polar:
+	polar=args.polar-1
+	if polar>3 or polar<0:
+		parser.error('The specified polarization is not exist.')
+else:
+	polar=0
 #
 if args.subint:
 	subint=np.float64(args.subint.split(','))
@@ -100,7 +107,7 @@ fig.set_facecolor('white')
 ax=fig.add_axes([0.12,0.1,0.82,0.83])
 ax.patch.set_facecolor('w')
 if args.fdomain:
-	data=d.period_scrunch(subint_start,subint_end,chan)[:,:,0]
+	data=d.period_scrunch(subint_start,subint_end,chan)[:,:,polar]
 	if 'zchan' in info.keys():
 		if len(chan):
 			zchan=np.array(list(set(np.int32(info['zchan'].split(','))).intersection(chan)))-chanstart
@@ -122,7 +129,7 @@ if args.fdomain:
 	ax.set_ylim(frequency[0],frequency[1])
 	texty=frequency[1]*1.01-frequency[0]*0.01
 if args.tdomain:
-	data=d.chan_scrunch(chan,subint_start,subint_end)[:,:,0]
+	data=d.chan_scrunch(chan,subint_start,subint_end)[:,:,polar]
 	if args.n:
 		data-=np.polyval(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(data)).T).T
 	else:
@@ -160,8 +167,19 @@ if args.profile:
 	data/=np.max(data[:,0])
 	if args.rotation:
 		data=shift(data,args.rotation)
-	low=min(data[:,0])*1.1-max(data[:,0])*0.1
-	high=max(data[:,0])*1.1-min(data[:,0])*0.1
+	x=np.linspace(0,1,len(data))
+	if args.polar:
+		data=data[:,polar]
+		ax.plot(x,data,'k-')
+	else:
+		ii,qq,uu,vv=data.T
+		ll=np.sqrt(qq**2+uu**2)
+		ax.plot(x,ii,'k-',label='I')
+		ax.plot(x,ll,'b--',label='Lin')
+		ax.plot(x,vv,'r-.',label='Cir')
+		ax.legend()
+	low=np.min(data)*1.1-np.max(data)*0.1
+	high=np.max(data)*1.1-np.min(data)*0.1
 	x=np.linspace(0,1,len(data))
 	ax.plot(x,data,'k-')
 	ax.set_ylabel('Flux (Arbitrary Unit)',fontsize=30)
@@ -183,7 +201,7 @@ def save_fig():
 	if figname.split('.')[-1] not in ['ps','eps','png','pdf','pgf']:
 		figname+='.pdf'
 	fig.savefig(figname)
-	print 'Figure file',figname,'has been saved.'
+	sys.stdout.write('Figure file',figname,'has been saved.')
 #
 try:
 	import gtk
