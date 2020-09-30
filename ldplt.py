@@ -7,7 +7,7 @@ import argparse as ap
 import os,time,ld,sys
 import warnings as wn
 #
-version='JigLu_20180508'
+version='JigLu_20200930'
 parser=ap.ArgumentParser(prog='ldplt',description='Plot the ld file. Press \'s\' in figure window to save figure.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("filename",help="input ld file")
@@ -29,6 +29,9 @@ if not os.path.isfile(args.filename):
 	parser.error('A valid ld file name is required.')
 d=ld.ld(args.filename)
 info=d.read_info()
+if info['mode']='cal':
+	parser.error('This ld file is calibration data.')
+#
 if 'compressed' in info.keys():
 	nchan=int(info['nchan_new'])
 	nbin=int(info['nbin_new'])
@@ -69,7 +72,7 @@ else:
 #
 if args.polar:
 	polar=args.polar-1
-	if polar>3 or polar<0:
+	if polar>npol-1 or polar<0:
 		parser.error('The specified polarization is not exist.')
 else:
 	polar=0
@@ -171,17 +174,17 @@ if args.profile:
 	if args.polar:
 		data=data[:,polar]
 		ax.plot(x,data,'k-')
-	else:
+	elif npol==4:
 		ii,qq,uu,vv=data.T
 		ll=np.sqrt(qq**2+uu**2)
 		ax.plot(x,ii,'k-',label='I')
 		ax.plot(x,ll,'b--',label='Lin')
 		ax.plot(x,vv,'r-.',label='Cir')
 		ax.legend()
+	else:
+		ax.plot(x,data,'k-')
 	low=np.min(data)*1.1-np.max(data)*0.1
 	high=np.max(data)*1.1-np.min(data)*0.1
-	x=np.linspace(0,1,len(data))
-	ax.plot(x,data,'k-')
 	ax.set_ylabel('Flux (Arbitrary Unit)',fontsize=30)
 	ax.set_ylim(low,high)
 	texty=high*1.01-low*0.01
@@ -201,7 +204,7 @@ def save_fig():
 	if figname.split('.')[-1] not in ['ps','eps','png','pdf','pgf']:
 		figname+='.pdf'
 	fig.savefig(figname)
-	sys.stdout.write('Figure file',figname,'has been saved.')
+	sys.stdout.write('Figure file',figname,'has been saved.\n')
 #
 try:
 	import gtk

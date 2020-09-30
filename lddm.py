@@ -32,7 +32,7 @@ if 'compressed' in info.keys():
 else:
 	nchan=int(info['nchan'])
 	nbin=int(info['nbin'])
-	nsub=int(info['nperiod'])
+	nsub=int(info['nsub'])
 dm0=np.float64(info['dm'])
 period=np.float64(info['period'])
 if args.dm:

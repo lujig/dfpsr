@@ -213,7 +213,7 @@ if args.subint:
 	if args.subint<period:
 		parser.error('Duration time of a subint is too short')
 	elif args.subint<(1.5*period):
-		sys.stdout.write('Warning: Duration time of a subint is too short, then the out put file is indeed single pulse mode.')
+		sys.stdout.write('Warning: Duration time of a subint is too short, then the out put file is indeed single pulse mode.\n')
 		info['mode']='single'
 	else:
 		info['mode']='subint'

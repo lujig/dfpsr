@@ -30,7 +30,7 @@ else:
 		nperiod=int(d.read_shape()[1])
 	else:
 		nbin=int(info['nbin'])
-		nperiod=int(info['nperiod'])
+		nperiod=int(info['nsub'])
 if nbin!=1:
 	data=d.period_scrunch()[:,:,0]
 else:

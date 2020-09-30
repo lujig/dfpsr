@@ -53,7 +53,7 @@ if 'compressed' in info.keys():
 else:
 	nchan=int(info['nchan'])
 	nbin=int(info['nbin'])
-	nperiod=int(info['nperiod'])
+	nperiod=int(info['nsub'])
 	npol=int(info['npol'])
 #
 if args.nchan_new:
