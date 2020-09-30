@@ -39,7 +39,7 @@ lddm.py:
 ld.py:
 	Provide some functions to access ld format data. With these functions, one can read data and information of ld file, or write data and information in a ld file.
 
-Independence: 
+Dependence: 
 
 	Software: PSRCAT and TEMPO2
 

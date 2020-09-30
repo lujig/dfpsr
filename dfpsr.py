@@ -482,7 +482,7 @@ def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 		for p in np.arange(npol):
 			tpdata[p]=np.interp(newphase,phase/dphasebin,data[f,p,:])
 		if temp_multi>1:
-			startphase,phaseres0=np.divmod(newphase[0],temp_multi)
+			startphase,phaseres0=divmod(newphase[0],temp_multi)
 			phaseres0=np.int64(phaseres0)
 			nphase=np.int64(np.ceil((newphase[-1]+1-newphase[0]+phaseres0)*1.0/temp_multi))
 			tpdata=np.concatenate((np.zeros([npol,phaseres0]),tpdata,np.zeros([npol,nphase*temp_multi-newphase[-1]-1+newphase[0]-phaseres0])),axis=1).reshape(npol,nphase,temp_multi).sum(2)
@@ -492,10 +492,10 @@ def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 		if info['mode']=='single':
 			write_data(d,tpdata,startphase,f)
 		else:
-			startperiod,phaseres1=np.divmod(startphase,nbin)
+			startperiod,phaseres1=divmod(startphase,nbin)
 			phaseres1=np.int64(phaseres1)
 			file_nperiod=np.int64(np.ceil((nphase+phaseres1)*1.0/nbin))
-			startsub,periodres=np.divmod(startperiod,sub_nperiod)
+			startsub,periodres=divmod(startperiod,sub_nperiod)
 			periodres=np.int64(periodres)
 			file_nsub=np.int64(np.ceil((file_nperiod+periodres)*1.0/sub_nperiod))
 			if file_nsub>1 or newphase[-1]==totalbin-1:

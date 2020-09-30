@@ -8,7 +8,7 @@ import os,time,ld
 import warnings as wn
 #
 version='JigLu_20180508'
-parser=ap.ArgumentParser(prog='plot',description='Plot the ld file. Press \'s\' in figure window to save figure.',epilog='Ver '+version)
+parser=ap.ArgumentParser(prog='ldplt',description='Plot the ld file. Press \'s\' in figure window to save figure.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("filename",help="input ld file")
 parser.add_argument('-f',action='store_true',default=False,dest='fdomain',help='show the frequency domain image')
@@ -18,6 +18,7 @@ parser.add_argument('-b','--phase_range',default=0,dest='phase',help='limit the 
 parser.add_argument('-r','--frequency_range',default=0,dest='frequency',help='limit the frequency rangeFREQ0,FREQ1')
 parser.add_argument('-s','--subint_range',default=0,dest='subint',help='limit the subint range SUBINT0,SUBINT1')
 parser.add_argument('-o','--polynomial_order',default=0,dest='n',type=int,help='fit the back ground with Nth order polynomial')
+parser.add_argument('--polar',default=0,dest='polar',type=int,help='plot the specified polarization')
 parser.add_argument('-c','--rotation',default=0,dest='rotation',type=np.float64,help='rotate the plot phase')
 parser.add_argument('-n',action='store_true',default=False,dest='norm',help='normalized the data at each channel or subint')
 parser.add_argument('-i',action='store_false',default=True,dest='title',help='hide file information above the figure')
