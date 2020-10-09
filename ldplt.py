@@ -29,7 +29,7 @@ if not os.path.isfile(args.filename):
 	parser.error('A valid ld file name is required.')
 d=ld.ld(args.filename)
 info=d.read_info()
-if info['mode']='cal':
+if info['mode']=='cal':
 	parser.error('This ld file is calibration data.')
 #
 if 'compressed' in info.keys():
