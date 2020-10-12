@@ -6,7 +6,7 @@ import numpy.fft as fft
 import os,ld,time
 #
 version='JigLu_20180506'
-parser=ap.ArgumentParser(prog='compress',description='Compress the ld file.',epilog='Ver '+version)
+parser=ap.ArgumentParser(prog='ldcomp',description='Compress the ld file.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("filename",help="input file to be compressed")
 parser.add_argument('-d',dest='dm',default=np.inf,type=np.float64,help="modify the dispersion measure to this value while compressing")

@@ -4,7 +4,7 @@ import argparse as ap
 import os,time,ld,sys
 #
 version='JigLu_20200930'
-parser=ap.ArgumentParser(prog='para',description='Show the parameters of ld file.',epilog='Ver '+version)
+parser=ap.ArgumentParser(prog='ldpara',description='Show the parameters of ld file.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("filename",help="input ld file")
 parser.add_argument('-c',dest='paras',default=0,help="parameter name list, include nsub, nchan, nbin, npol, stt_time, file_time, psr_name, period, nperiod, dm, freq, bw and length")

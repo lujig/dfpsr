@@ -8,7 +8,7 @@ import os,time,ld,sys
 import warnings as wn
 #
 version='JigLu_20200930'
-parser=ap.ArgumentParser(prog='ldplt',description='Plot the ld file. Press \'s\' in figure window to save figure.',epilog='Ver '+version)
+parser=ap.ArgumentParser(prog='ldplot',description='Plot the ld file. Press \'s\' in figure window to save figure.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("filename",help="input ld file")
 parser.add_argument('-f',action='store_true',default=False,dest='fdomain',help='show the frequency domain image')
