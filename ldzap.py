@@ -206,7 +206,7 @@ def keymotion(a):
 		zapnum=list(zapnum)
 		info['zchan']=str(zapnum)[1:-1]
 		save=ld.ld('.'.join(args.filename.split('.')[:-1])+'_zap.ld')
-		save.write_shape([nchan,nperiod,nbin,1])
+		save.write_shape([nchan,nperiod,nbin,npol])
 		for i in np.arange(nchan):
 			if i in zapnum:
 				save.write_chan(np.zeros(nperiod*nbin),i)
