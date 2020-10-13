@@ -21,31 +21,31 @@ plist=args.paras.split(',')
 for pname in plist:
 	if pname=='nsub':
 		if 'compressed' in info.keys():
-			sys.stdout.write(pname+info['nsub_new']+'\n')
+			sys.stdout.write(pname+' '+info['nsub_new']+'\n')
 		else:
-			sys.stdout.write(pname+info['nsub']+'\n')
+			sys.stdout.write(pname+' '+info['nsub']+'\n')
 	elif pname=='nchan':
 		if 'compressed' in info.keys():
-			sys.stdout.write(pname+info['nchan_new']+'\n')
+			sys.stdout.write(pname+' '+info['nchan_new']+'\n')
 		else:
-			sys.stdout.write(pname+info['nchan']+'\n')
+			sys.stdout.write(pname+' '+info['nchan']+'\n')
 	elif pname=='nbin':
 		if 'compressed' in info.keys():
-			sys.stdout.write(pname+info['nbin_new']+'\n')
+			sys.stdout.write(pname+' '+info['nbin_new']+'\n')
 		else:
-			sys.stdout.write(pname+info['nbin']+'\n')
+			sys.stdout.write(pname+' '+info['nbin']+'\n')
 	elif pname=='nbin':
 		if 'compressed' in info.keys():
-			sys.stdout.write(pname+info['npol_new']+'\n')
+			sys.stdout.write(pname+' '+info['npol_new']+'\n')
 		else:
-			sys.stdout.write(pname+info['npol']+'\n')
+			sys.stdout.write(pname+' '+info['npol']+'\n')
 	elif pname=='shape':
-		sys.stdout.write(str(tuple(d.read_shape()))+'\n')
+		sys.stdout.write(pname+' '+str(tuple(d.read_shape()))+'\n')
 	elif pname in ['stt_time', 'file_time', 'psr_name', 'nperiod', 'period', 'dm', 'length', 'mode']:
-		sys.stdout.write(pname+info[pname]+'\n')
+		sys.stdout.write(pname+' '+info[pname]+'\n')
 	elif pname=='freq':
-		sys.stdout.write(pname+str((np.float64(info['freq_end'])+np.float64(info['freq_start']))/2)+'\n')
+		sys.stdout.write(pname+' '+str((np.float64(info['freq_end'])+np.float64(info['freq_start']))/2)+'\n')
 	elif pname=='bw':
-		sys.stdout.write(pname+str(np.float64(info['freq_end'])-np.float64(info['freq_start']))+'\n')
+		sys.stdout.write(pname+' '+str(np.float64(info['freq_end'])-np.float64(info['freq_start']))+'\n')
 	else:
-		sys.stdout.write('Parameter'+pname+'can not be found.'+'\n')
+		sys.stdout.write('Parameter '+pname+' can not be found.'+'\n')
