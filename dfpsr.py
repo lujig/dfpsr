@@ -287,7 +287,7 @@ if noise_mark=='fits':
 			noise_t=np.int64(np.round((np.arange(nsblk)+cumsub*nsblk)*tsamp%args.cal_period/tsamp))
 			for k in np.arange(nsblk):
 				tmp_noise_t=noise_t[k]
-				if tmp_noise_t==noisen:
+				if tmp_noise_t>=noisen:
 					continue
 				noise_data[tmp_noise_t]+=data[k]
 				noise_cum[tmp_noise_t]+=1
