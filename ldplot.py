@@ -204,7 +204,7 @@ def save_fig():
 	if figname.split('.')[-1] not in ['ps','eps','png','pdf','pgf']:
 		figname+='.pdf'
 	fig.savefig(figname)
-	sys.stdout.write('Figure file',figname,'has been saved.\n')
+	sys.stdout.write('Figure file'+figname+'has been saved.\n')
 #
 try:
 	import gtk
