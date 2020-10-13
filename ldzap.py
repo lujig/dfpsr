@@ -31,6 +31,7 @@ else:
 	else:
 		nbin=int(info['nbin'])
 		nperiod=int(info['nsub'])
+npol=int(info['npol'])
 if nbin!=1:
 	data=d.period_scrunch()[:,:,0]
 else:
