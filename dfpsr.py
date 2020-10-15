@@ -439,8 +439,8 @@ def write_data(ldfile,data,startbin,channum):
 		if pol_type=='AABBCRCI':
 			a12,a22,ncos,nsin=noise_a12[channum],noise_a22[channum],noise_cos[channum],noise_sin[channum]
 			aa,bb,cr,ci=data
-			aa0,bb0,u,v=a12*aa,a22*bb,ncos*cr+nsin*ci,-nsin*cr+ncos*ci
-			i,q=aa0+bb0,aa0-bb0
+			aa0,bb0,cr0,ci0=a12*aa,a22*bb,ncos*cr+nsin*ci,-nsin*cr+ncos*ci
+			i,q,u,v=aa0+bb0,aa0-bb0,cr0*2,ci0*2
 			data=np.array([i,q,u,v])
 		elif pol_type=='IQUV':
 			a1p2,a1m2,ncos,nsin=noise_a1p2[channum],noise_a1m2[channum],noise_cos[channum],noise_sin[channum]
