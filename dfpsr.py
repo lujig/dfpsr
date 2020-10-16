@@ -304,7 +304,7 @@ if noise_mark=='fits':
 elif noise_mark=='ld':
 	noise_a12,noise_a22,noise_cos,noise_sin=noise.read_period(0)[chanstart:chanend,0].T
 if args.cal:
-	info['cal']=list(np.array([noise_a12,noise_a22,noise_cos,noise_sin]).T.reshape(-1))
+	info['cal']=list(map(str,np.array([noise_a12,noise_a22,noise_cos,noise_sin]).T.reshape(-1)))
 	noise_a12=np.where(noise_a12>0,1./noise_a12,0)
 	noise_a22=np.where(noise_a22>0,1./noise_a22,0)
 	noise_a1a2=noise_a12*noise_a22
