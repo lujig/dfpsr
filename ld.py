@@ -257,7 +257,7 @@ class ld():
 			self.file.write(key+'\n')
 			if type(info[key])==list:
 				for value in info[key]:
-					self.file.write((' '+value.strip()).strip('\n')+'\n')
+					self.file.write((' '+str(value).strip()).strip('\n')+'\n')
 			else:
 				self.file.write(' '+str(info[key])+'\n')
 		self.file.truncate()
