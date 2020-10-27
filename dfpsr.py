@@ -8,6 +8,7 @@ import mpmath as mm
 mm.mp.dps=30
 import astropy.io.fits as ps
 from multiprocessing import Pool
+import gc
 #
 version='JigLu_20200925'
 #
@@ -581,6 +582,7 @@ def dealdata(filelist,n):
 			del f['SUBINT'].data
 			tpsub,tpsubn=gendata(cumsub,nsblk,data,tpsub,tpsubn,last=(i==(fsub-1)),first=i==0)
 		f.close()
+	gc.collect()
 	if args.verbose:
 		sys.stdout.write('Processing the '+str(n+1)+'th fits file takes '+str(time.time()-timemark)+' second.\n')
 #
