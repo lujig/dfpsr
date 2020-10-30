@@ -4,7 +4,7 @@ import numpy.ma as ma
 import numpy.fft as fft
 from matplotlib.figure import Figure
 import argparse as ap
-import os,time,ld
+import os,time,ld,sys
 import warnings as wn
 import matplotlib.pyplot as plt
 #
@@ -202,7 +202,7 @@ def save_fig():
 	if figname.split('.')[-1] not in ['ps','eps','png','pdf','pgf']:
 		figname+='.pdf'
 	fig.savefig(figname)
-	print 'Figure file',figname,'has been saved.'
+	sys.stdout.write('Figure file '+figname+' has been saved.')
 #
 try:
 	import gtk

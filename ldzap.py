@@ -174,13 +174,13 @@ def update_image():
 	ylim=0
 #
 def move_tk(event):
-    if event.x>ax.bbox.extents[0] and event.x<ax1.bbox.extents[2]: 
+	if event.x>ax.bbox.extents[0] and event.x<ax1.bbox.extents[2]: 
 		y=(fig.bbox.extents[3]-event.y)/fig.bbox.extents[3]
 		l1.set_ydata([y,y])
 		canvas.draw()
 #
 def move_gtk(window,event):
-    if event.x>ax.bbox.extents[0] and event.x<ax1.bbox.extents[2]: 
+	if event.x>ax.bbox.extents[0] and event.x<ax1.bbox.extents[2]: 
 		y=(fig.bbox.extents[3]-event.y)/fig.bbox.extents[3]
 		l1.set_ydata([y,y])
 		canvas.draw()
