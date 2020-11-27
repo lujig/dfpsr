@@ -449,9 +449,6 @@ def write_data(ldfile,data,startbin,channum):
 			i,q,u,v=data
 			i,q,u,v=a1p2*i-a1m2*q,a1p2*q-a1m2*i,ncos*u+nsin*v,-nsin*u+ncos*v
 			data=np.array([i,q,u,v])
-		info['pol_type']='IQUV'
-	else:
-		info['pol_type']=pol_type
 	d.__write_chanbins_add__(data.T,startbin,channum)
 #
 def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
@@ -600,6 +597,10 @@ if args.multi:
 	pool.close()
 	pool.join()
 #
+if args.cal:
+	info['pol_type']='IQUV'
+else:
+	info['pol_type']=pol_type
 d.write_info(info)
 #
 

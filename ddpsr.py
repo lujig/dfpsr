@@ -24,7 +24,7 @@ parser.add_argument('-d','--dm',dest='dm',default=0,type=np.float64,help="disper
 parser.add_argument('-n','--pulsar_name',default=0,dest='psr_name',help='input pulsar name')
 parser.add_argument('-e','--pulsar_ephemeris',default=0,dest='par_file',help='input pulsar parameter file')
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
-parser.add_argument("-s","--not_scrunch",action="store_true",default=False,help="do not scrunch the data in the frequency domain")
+parser.add_argument("-s","--fscrunch",type=int,default=0,help="frequency scrunch by this factor, if not set, the file will be scrunched to one channel")
 parser.add_argument("-r","--reverse",action="store_true",default=False,help="reverse the band")
 parser.add_argument("-l","--large_mem",action="store_true",default=False,help="large RAM")
 parser.add_argument("-m","--multi",dest="multi",default=0,type=int,help="number of processes")
@@ -205,6 +205,17 @@ else:
 info['mode']='dedisperse'
 #
 info['dm']=dm
+#
+if args.fscrunch:
+	fscrunch=args.fscrunch
+	if fscrunch<0: 
+		parser.error('The scrunch factor should be positive.')
+	elif fscrunch>nchan_new:
+		parser.error('The scrunch factor should be smaller than the channel number.')
+	elif nchan_new%fscrunch!=0:
+		parser.error('The channel number should be divisible by the scrunch factor.')
+	nchan1=nchan_new/fscrunch
+	command.append('-s '+str(fscrunch))
 #
 if args.zap_file:
 	command.append('-z')
@@ -400,11 +411,25 @@ if args.multi:
 	pool.close()
 	pool.join()
 #
-if not args.not_scrunch:
+if fscrunch:
+	for i in np.arange(nchan1):
+		fdata=d.chan_scrunch(np.arange(fscrunch)+i*fscrunch)
+		d.write_chan(fdata,i)
+	d.__size__[1:]=np.int32([nchan_1,1,nbin,npol])
+	d.__size__[0]=nchan_1*nbin*npol*8
+	d.__write_size__(d.__size__)
+	d.file=open(d.name,'rb+')
+	d.file.seek(24+d.__size__[0],0)
+	d.file.truncate()
+	d.file.flush()
+	d.file.close()
+	info['nchan']=nchan1
+else:
 	fdata=d.chan_scrunch()
 	d.write_shape([1,1,nbin,npol])
 	d.write_chan(fdata,0)
 	info['nchan']=1
+
 #
 d.write_info(info)
 #

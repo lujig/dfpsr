@@ -230,6 +230,9 @@ for f in np.arange(nchan):
 		tpdata=tpdata.reshape(npol,-1,temp_multi).sum(2)
 	if info['mode']=='single':
 		d.write_chan(tpdata.T,f)
+	else:
+		tpdata=np.concatenate((tpdata,np.zeros([npol,(sub_nperiod-sub_nperiod_last)*nbin])),axis=1).reshape(npol,nsub,sub_nperiod,nbin).sum(2).reshape(npol,nsub*nbin).T
+		d.write_chan(tpdata.T,f)
 #
 info['stt_sec']=stt_sec
 info['stt_date']=stt_date
