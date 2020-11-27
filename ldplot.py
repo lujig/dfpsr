@@ -227,7 +227,7 @@ try:
 except:
 	import matplotlib as mpl
 	from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-	import Tkinter as tk
+	import tkinter as tk
 	mpl.use('TkAgg')
 	ax.tick_params(axis='x',labelsize=15)
 	ax.tick_params(axis='y',labelsize=15)
@@ -237,7 +237,7 @@ except:
 	canvas=FigureCanvasTkAgg(fig,master=root)
 	canvas.get_tk_widget().grid()
 	canvas.get_tk_widget().pack(fill='both')
-	canvas.show()
+	canvas.draw()
 	def save_tk(event):
 		if event.keysym=='s':
 			save_fig()

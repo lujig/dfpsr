@@ -245,7 +245,7 @@ def keymotion(a):
 		print "  q  Exit program\n"
 #
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import Tkinter as tk
+import tkinter as tk
 import matplotlib as mpl
 mpl.use('TkAgg')
 root=tk.Tk()
