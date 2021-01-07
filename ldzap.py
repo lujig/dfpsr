@@ -5,7 +5,7 @@ import numpy.fft as fft
 import argparse as ap
 from matplotlib.figure import Figure
 import matplotlib.lines as ln
-import ld,os,copy
+import ld,os,copy,sys
 #
 version='JigLu_20200923'
 parser=ap.ArgumentParser(prog='ldzap',description='Zap the frequency domain interference in ld file.',epilog='Ver '+version)
@@ -232,17 +232,17 @@ def keymotion(a):
 		else: return
 		update_image()
 	elif a=='h':
-		print "\nldzap interactive commands\n"
-		print "Mouse:"
-		print "  Left-click selects the start of a range"
-		print "    then left-click again to zoom, or right-click to zap."
-		print "  Right-click zaps current cursor location.\n"
-		print "Keyboard:"
-		print "  h  Show this help"
-		print "  u  Undo last zap command"
-		print "  r  Reset zoom and update dynamic spectrum"
-		print "  s  Save zapped version as (filename)_zap.ld and quit"
-		print "  q  Exit program\n"
+		sys.stdout.write("\nldzap interactive commands\n\n")
+		sys.stdout.write("Mouse:\n")
+		sys.stdout.write("  Left-click selects the start of a range\n")
+		sys.stdout.write("    then left-click again to zoom, or right-click to zap.\n")
+		sys.stdout.write("  Right-click zaps current cursor location.\n\n")
+		sys.stdout.write("Keyboard:\n")
+		sys.stdout.write("  h  Show this help\n")
+		sys.stdout.write("  u  Undo last zap command\n")
+		sys.stdout.write("  r  Reset zoom and update dynamic spectrum\n")
+		sys.stdout.write("  s  Save zapped version as (filename)_zap.ld and quit\n")
+		sys.stdout.write("  q  Exit program\n\n")
 #
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import tkinter as tk

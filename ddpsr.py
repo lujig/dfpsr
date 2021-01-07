@@ -342,8 +342,53 @@ def write_data(ldfile,data,startbin,channum):
 	d.__write_chanbins_add__(data.T,startbin,channum)
 #
 freq=np.arange(chanstart,chanstart+nchan_new)*channel_width+freq_start
-dispb=4148.808*dm/freq**2/tsamp
-dispb-=4148.808*dm/freq_end**2/tsamp
+if args.dm:
+	dispb=4148.808*dm/freq**2/tsamp
+	dispb-=4148.808*dm/freq_end**2/tsamp
+else:
+	stt_time=info['stt_time_origin']
+	end_time=stt_time+tsamp*nbin/86400.0+60./86400
+	stt_time-=60./86400
+	stt_time=str(int(stt_time))+str(stt_time%1)[1:]
+	end_time=str(int(end_time))+str(end_time%1)[1:]
+	os.popen('tempo2 -f '+par_file+' -pred \"'+telename+' '+stt_time+' '+end_time+' '+str(freq_start)+' '+str(freq_end)+' 12 2 '+str(int(tsamp*nbin)+150)+'\"').close()
+	predictor_file='t2pred.dat'
+	#
+	polyco=open(predictor_file,'r')
+	lines=polyco.readlines()
+	polyco.close()
+	os.remove(predictor_file)
+	os.remove('pred.tim')
+	coeff=[]
+	predictor=[]
+	for line in lines:
+		predictor.append(line)
+		elements=line.split()
+		if elements[0]=='TIME_RANGE':
+			t0=mm.mpf(elements[1])
+			t1=mm.mpf(elements[2])
+		elif elements[0]=='DISPERSION_CONSTANT':
+			dispc=np.float64(elements[1])
+		elif elements[0]=='COEFFS':
+			coeff.append(list(map(mm.mpf,elements[1:])))
+		elif line=="ChebyModel END\n" or line=="ChebyModel END":
+			break
+	info['predictor']=predictor[1:]
+	coeff=np.array(coeff)
+	coeff[0,:]/=2.0
+	coeff[:,0]/=2.0
+	tmp=int(coeff[0,0])
+	coeff[0,0]-=tmp
+	coeff=np.float64(coeff)
+	time0=file_time[0]
+	t0=np.float64(t0-time0[-1])*86400.0
+	t1=np.float64(t1-time0[-1])*86400.0
+	dt=(np.array([0,nbin])*tsamp+time0[:-1].sum()-delay-t0)/(t1-t0)*2-1
+	coeff1=coeff.sum(1)
+	phase=nc.chebval(dt,coeff1)
+	period=tsamp*nbin/(phase[1]-phase[0])
+	dispb=-dispc*period/freq**2/tsamp
+	dispb-=(-dispc*period)/freq_end**2/tsamp
 dispb_i=np.int64(np.floor(dispb))
 dispb_f=dispb-dispb_i
 dispb_r=1-dispb_f
@@ -388,7 +433,6 @@ def dealdata(filelist,n):
 		gendata(cumsub,file_len[n]*nsblk,data,tpsub,tpsubn,last=True)
 	else:
 		for i in np.arange(fsub):
-			print(i)
 			cumsub=np.int64(file_len[:n].sum()+i)
 			dtmp=f['SUBINT'].data[i]
 			data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
@@ -413,17 +457,17 @@ if args.multi:
 #
 if fscrunch:
 	for i in np.arange(nchan1):
-		fdata=d.chan_scrunch(np.arange(fscrunch)+i*fscrunch)
-		d.write_chan(fdata,i)
-	d.__size__[1:]=np.int32([nchan_1,1,nbin,npol])
-	d.__size__[0]=nchan_1*nbin*npol*8
+		fdata=d.chan_scrunch(np.int32(np.arange(fscrunch)+i*fscrunch))
+		d.write_chan(fdata,np.int32(i))
+	d.__size__[1:]=np.int32([nchan1,1,nbin,npol])
+	d.__size__[0]=nchan1*nbin*npol*8
 	d.__write_size__(d.__size__)
 	d.file=open(d.name,'rb+')
 	d.file.seek(24+d.__size__[0],0)
 	d.file.truncate()
 	d.file.flush()
 	d.file.close()
-	info['nchan']=nchan1
+	info['nchan']=np.int32(nchan1)
 else:
 	fdata=d.chan_scrunch()
 	d.write_shape([1,1,nbin,npol])

@@ -30,9 +30,9 @@ if not os.path.isfile(args.filename):
 d=ld.ld(args.filename)
 info=d.read_info()
 #
-fflag=np.sum(map(np.bool,[args.nchan_new,args.fscrunch]))
-tflag=np.sum(map(np.bool,[args.nsub_new,args.tscrunch]))
-bflag=np.sum(map(np.bool,[args.nbin_new,args.bscrunch]))
+fflag=np.sum(list(map(np.bool,[args.nchan_new,args.fscrunch])))
+tflag=np.sum(list(map(np.bool,[args.nsub_new,args.tscrunch])))
+bflag=np.sum(list(map(np.bool,[args.nbin_new,args.bscrunch])))
 pflag=np.int16(args.pscrunch)
 if fflag+tflag+bflag+pflag==0:
 	parser.error('At least one of flags -f, -F, -t, -T, -b and -B is required.')
@@ -72,6 +72,8 @@ if args.nsub_new:
 	command.append('-t '+str(nsub_new))
 	if nsub_new>nperiod:
 		parser.error('The input subint number is larger than the period number of dat file.')
+	elif nsub_new<nperiod:
+		info['mode']='subint'
 elif args.tscrunch:
 	nsub_new=1
 	command.append('-T')
@@ -92,6 +94,7 @@ else:
 if args.pscrunch:
 	npol_new=1
 	command.append('-P')
+	info['mode']='subint'
 else:
 	npol_new=npol
 #
@@ -191,7 +194,7 @@ for i in np.arange(chanstart,chanend):
 			tpdata+=data0
 	else:
 		if i in zchan:
-			chan_data=np.zeros([nperiod,nbin])
+			chan_data=np.zeros([nperiod,nbin,npol_new])
 		else:
 			data0=d.read_chan(i)
 			if npol_new==1:
@@ -202,11 +205,14 @@ for i in np.arange(chanstart,chanend):
 				chan_data=data0
 		tpdata+=chan_data*(res*1.0/nchan_new)
 		if nsub_new!=nperiod:
-			tpdata=fft.rfft(tpdata,axis=0)*np.exp(-(0.5/nsub_new-0.5/nperiod)*1j*np.arange(nperiod/2+1)).reshape(-1,1,1)
-			if 2*nsub_new>=nperiod:
-				tpdata=fft.irfft(np.concatenate((tpdata,np.zeros([nsub_new+1-tpdata.shape[0],nbin])),axis=0),axis=0).reshape(nsub_new,2,nbin,npol_new).sum(1)
+			if nsub_new==1:
+				tpdata=tpdata.sum(0)
 			else:
-				tpdata=fft.irfft(tpdata[:(nsub_new+1),:],axis=0).reshape(nsub_new,2,nbin,npol_new).sum(1)
+				tpdata=fft.rfft(tpdata,axis=0)*np.exp(-(0.5/nsub_new-0.5/nperiod)*1j*np.arange(nperiod/2+1)).reshape(-1,1,1)
+				if 2*nsub_new>=nperiod:
+					tpdata=fft.irfft(np.concatenate((tpdata,np.zeros([nsub_new+1-tpdata.shape[0],nbin])),axis=0),axis=0).reshape(nsub_new,2,nbin,npol_new).sum(1)
+				else:
+					tpdata=fft.irfft(tpdata[:(nsub_new+1),:],axis=0).reshape(nsub_new,2,nbin,npol_new).sum(1)
 		if nbin_new!=nbin:
 			tpdata=fft.rfft(tpdata,axis=1)*np.exp(-(0.5/nbin_new-0.5/nbin)*1j*np.arange(nbin/2+1)).reshape(1,-1,1)
 			if 2*nbin_new>=nbin:

@@ -14,13 +14,13 @@ version='JigLu_20200925'
 #
 parser=ap.ArgumentParser(prog='dfpsr',description='Dedisperse and Fold the psrfits data.',epilog='Ver '+version)
 parser.add_argument('-v','--version', action='version', version=version)
-parser.add_argument('--verbose', action="store_true",default=False,help="print detailed information")
+parser.add_argument('--verbose', action="store_true",default=False,help=" detailed information")
 parser.add_argument("filename",nargs='+',help="name of file or filelist")
 parser.add_argument("-a","--cal",dest="cal",nargs='+',help="name of calibration file or calibration filelist")
 parser.add_argument("--cal_period",dest="cal_period",default=0,type=np.float64,help="period of the calibration fits file (s)")
 parser.add_argument("-o","--output",dest="output",default="psr",help="output file name")
 parser.add_argument("-f","--frequency",dest='freqrange',default=0,help="output frequency range (MHz) in form start_freq,end_freq")
-parser.add_argument('-d','--dm',dest='dm',default=0,type=np.float64,help="dispersion measure")
+parser.add_argument('-d','--dm',dest='dm',default=-2e300,type=np.float64,help="dispersion measure")
 parser.add_argument('-p','--period',dest='period',default=0,type=np.float64,help="pulsar period (s)")
 parser.add_argument('-n','--pulsar_name',default=0,dest='psr_name',help='input pulsar name')
 parser.add_argument('-e','--pulsar_ephemeris',default=0,dest='par_file',help='input pulsar parameter file')
@@ -195,16 +195,16 @@ elif args.psr_name or args.par_file:
 		elif elements[0]=='F0':
 			period=1./np.float64(elements[1])
 		elif elements[0]=='DM':
-			if not args.dm:
+			if not args.dm>-1e300:
 				dm=np.float64(elements[1])
 			else:
 				dm=args.dm
 		elif elements[0]=='PEPOCH':
 			pepoch=True
 else:
-	if not (args.dm or args.period):
+	if not (args.dm>-1e300 or args.period):
 		parser.error('Pulsar Parameter should be provided.')
-	if not (args.dm and args.period):
+	if not (args.dm>-1e300 and args.period):
 		parser.error('Both DM and period should be provided.')
 	period=args.period
 	dm=args.dm
@@ -473,7 +473,6 @@ def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 				phase=dt/period
 		else:
 			phase=nc.chebval2d(dt,df0[f]*np.ones_like(dt,dtype=np.float64),coeff)+dispc/df[f]**2
-			if f==nchan_new-1 and cums==0: print(phase)
 		newphase=np.arange(phase[0]//dphasebin+1,phase[-1]//dphasebin+1,dtype=np.int64)
 		if newphase[-1]<0 or newphase[0]>=totalbin:
 			continue

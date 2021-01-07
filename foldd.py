@@ -35,7 +35,7 @@ if args.filename[-3:]=='.ld':
 else:
 	parser.error("The input file should be ld format.")
 #
-telename,psr_name,npol,nbin0,nchan,tsamp=info['telename'],info['psr_name'],int(info['npol']),int(info['nbin_origin']),int(info['nchan']),np.float64(info['tsamp_origin'])
+telename,psr_name,npol,nbin0,nchan,tsamp=info['telename'],info['psr_name'],np.int32(info['npol']),np.int32(info['nbin_origin']),np.int32(info['nchan']),np.float64(info['tsamp_origin'])
 freq_start,freq_end,stt_time,stt_date,stt_sec=np.float64(info['freq_start']),np.float64(info['freq_end']),np.float64(info['stt_time_origin']),np.float64(info['stt_date']),np.float64(info['stt_sec'])
 #
 bandwidth=freq_end-freq_start
@@ -214,13 +214,12 @@ d.write_shape([nchan,info['nsub'],nbin,npol])
 if args.period:
 	dt=np.array([np.arange(nbin0)*tsamp]*nchan_new)
 else:
-	dt=(np.arange(nbin0)*tsamp+np.float64(info['stt_sec'])-t0)/(t1-t0)*2-1
+	dt=(np.arange(nbin0)*tsamp-tsamp+np.float64(info['stt_sec'])-t0)/(t1-t0)*2-1
 for f in np.arange(nchan):
 	if args.period:
 		phase=dt/period
 	else:
 		phase=nc.chebval2d(dt,np.ones_like(dt),coeff)+dispc/freq_end**2
-		print(phase)
 	newphase=np.arange(totalbin)
 	data=d0.read_chan(f)[0].T
 	tpdata=np.zeros([npol,totalbin])
