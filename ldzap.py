@@ -210,7 +210,7 @@ def keymotion(a):
 		save.write_shape([nchan,nperiod,nbin,npol])
 		for i in np.arange(nchan):
 			if i in zapnum:
-				save.write_chan(np.zeros(nperiod*nbin),i)
+				save.write_chan(np.zeros(nperiod*nbin*npol),i)
 				continue
 			save.write_chan(d.read_chan(i),i)
 		save.write_info(info)

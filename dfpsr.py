@@ -421,7 +421,8 @@ info['length']=period*nperiod
 totalbin=nperiod*nbin*temp_multi
 dphasebin=1./(nbin*temp_multi)
 df=freq_start+np.arange(nchan_new)*channel_width
-df0=(df-f0)/(f1-f0)*2-1
+if not args.period:
+	df0=(df-f0)/(f1-f0)*2-1
 #
 d=ld.ld(name+'.ld')
 if info['mode']=='subint':
@@ -461,7 +462,7 @@ def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 	else:
 		data=data[chanstart:chanend]
 	if args.period:
-		dt=np.array([np.arange(nsblk*cums-1,nsblk*cums+nsub+1)*tsamp]*nchan_new)
+		dt=np.arange(nsblk*cums-2,nsblk*cums+nsub+2)*tsamp
 	else:
 		dt=(np.arange(nsblk*cums-2,nsblk*cums+nsub+2)*tsamp+time0[:-1].sum()-delay-t0)/(t1-t0)*2-1
 	for f in np.arange(nchan_new):
