@@ -198,13 +198,16 @@ def keymotion(a):
 		zapnum=set()
 		for i in zaplist:
 			zapnum.update(i)
-		np.savetxt('zap.txt',np.sort(list(zapnum)),fmt='%i')
+		zapnum=np.sort(list(zapnum))
+		zapnum=zapnum[(zapnum>=0)&(zapnum<nchan)]
+		np.savetxt('zap.txt',zapnum,fmt='%i')
 	elif a=='s':
 		root.destroy()
 		zapnum=set()
 		for i in zaplist:
 			zapnum.update(i)
-		zapnum=list(zapnum)
+		zapnum=np.sort(list(zapnum))
+		zapnum=list(zapnum[(zapnum>=0)&(zapnum<nchan)])
 		info['zchan']=str(zapnum)[1:-1]
 		save=ld.ld('.'.join(args.filename.split('.')[:-1])+'_zap.ld')
 		save.write_shape([nchan,nperiod,nbin,npol])
