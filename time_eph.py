@@ -2,6 +2,7 @@ import numpy as np
 import numpy.polynomial.chebyshev as nc
 import struct as st
 import mpmath as mm
+import datetime as dt
 mm.mp.dps=40
 #
 ephname='DE438.1950.2050'
@@ -16,10 +17,8 @@ pi_mm=mm.mpf('3.14159265358979323846264338327950288')
 pi=np.float64(pi_mm)
 #
 def readeph(et,ephname=ephname):
-	"""
-	0 mercury; 1 venus; 2 earth; 3 mars; 4 jupiter; 5 saturn; 6 uranus; 7 neptune; 8 pluto; 9 moon; 10 sun; 11 barycenter; 12 earth-moon-center
-	"""
-	f=open('conventions/'+ephname,'rb')
+	# 0 mercury; 1 venus; 2 earth; 3 mars; 4 jupiter; 5 saturn; 6 uranus; 7 neptune; 8 pluto; 9 moon; 10 sun; 11 barycenter; 12 earth-moon-center
+	f=open('./conventions/'+ephname,'rb')
 	title=f.read(84)
 	ephemeris_version=int(title[26:29])
 	f.seek(2652,0)
@@ -125,17 +124,17 @@ def readeph(et,ephname=ephname):
 					lib[j_sum]=posvel
 	f.close()
 	pv[:,2],pv[:,9]=pv[:,12]-pv[:,9]/(1+emrat),pv[:,12]+pv[:,9]
-	pos0,vel0,acc0=(pv*1000).reshape(-1,13,3,3).transpose(2,1,3,0) #*np.float64(iftek)
-	pos=np.array(list(map(lambda x:vector(x[0],x[1],x[2],center='bary',scale='tdb',coord='equ',unit=1,type0='pos'),pos0)))
-	vel=np.array(list(map(lambda x:vector(x[0],x[1],x[2],center='bary',scale='tdb',coord='equ',unit=1,type0='vel'),vel0)))
-	acc=np.array(list(map(lambda x:vector(x[0],x[1],x[2],center='bary',scale='tdb',coord='equ',unit=1,type0='acc'),acc0)))
+	pos0,vel0,acc0=(pv*1000/sl).reshape(-1,13,3,3).transpose(2,1,3,0) #*np.float64(iftek)
+	pos=np.array(list(map(lambda x:vector(x[0],x[1],x[2],center='bary',scale='tdb',coord='equ',unit=sl,type0='pos'),pos0)))
+	vel=np.array(list(map(lambda x:vector(x[0],x[1],x[2],center='bary',scale='tdb',coord='equ',unit=sl,type0='vel'),vel0)))
+	acc=np.array(list(map(lambda x:vector(x[0],x[1],x[2],center='bary',scale='tdb',coord='equ',unit=sl,type0='acc'),acc0)))
 	return pos,vel,acc,nut,cons
 #
 def rotz(psi,mat):
 	sp=np.sin(psi)
 	cp=np.cos(psi)
 	rot=np.array([[cp,sp,np.zeros_like(cp)],[-sp,cp,np.zeros_like(cp)],[np.zeros_like(cp),np.zeros_like(cp),np.ones_like(cp)]])
-	if np.array(cp).size>1:
+	if np.size(rot.shape)==3:
 		rot=rot.transpose(2,0,1)
 	return rot@mat
 #
@@ -143,7 +142,7 @@ def rotx(phi,mat):
 	sp=np.sin(phi)
 	cp=np.cos(phi)
 	rot=np.array([[np.ones_like(cp),np.zeros_like(cp),np.zeros_like(cp)],[np.zeros_like(cp),cp,sp],[np.zeros_like(cp),-sp,cp]])
-	if np.array(cp).size>1:
+	if np.size(rot.shape)==3:
 		rot=rot.transpose(2,0,1)
 	return rot@mat
 #
@@ -151,7 +150,7 @@ def roty(theta,mat):
 	st=np.sin(theta)
 	ct=np.cos(theta)
 	rot=np.array([[ct,np.zeros_like(ct),-st],[np.zeros_like(ct),np.ones_like(ct),np.zeros_like(ct)],[st,np.zeros_like(ct),ct]])
-	if np.array(ct).size>1:
+	if np.size(rot.shape)==3:
 		rot=rot.transpose(2,0,1)
 	return rot@mat
 #
@@ -160,7 +159,9 @@ def multiply(a,b):
 		ax,ay,az=a[...,0],a[...,1],a[...,2]
 		bx,by,bz=b[...,0],b[...,1],b[...,2]
 		return np.array([ay*bz-az*by,az*bx-ax*bz,ax*by-ay*bx]).T
-		
+#
+def normalize(a):
+	return a/(a**2).sum(-1).reshape([*a.shape[:-1],1])
 #
 def lmst(mjd,olong):# sidereal time and the derivative, here mjd is the ut1_mjd
 	a = 24110.54841
@@ -226,6 +227,25 @@ def datetime2mjd(datetime):
 	yrdat=np.array(list(map(lambda x:x[0][:(x[1]-1950)].sum(),zip(yrdat,yr))))
 	return time(33281+yrdat+modat+dat,dat0)
 #
+def mjd2datetime(mjd):
+	mjd=np.array(mjd).reshape(-1)
+	ndate=np.array(mjd).size
+	day,sec=np.divmod(mjd,1)
+	day-=33281
+	yrdat=np.ones([ndate,100])*365
+	yrdat[:,[i-1950 for i in range(1950,2050) if (((i%4==0)&(i%100!=0))|(i%400==0))]]=366
+	yrdat=yrdat.cumsum()
+	yrnum=((day.reshape(-1,1)-yrdat)>0).sum(1)
+	yr=1950+yrnum
+	iday=day-yrdat[yrnum]
+	modat=np.array([[31,28,31,30,31,30,31,31,30,31,30,31]]*ndate)
+	modat[((yr%4==0) & (yr%100!=0)) | (yr%400==0),1]=29
+	modat=modat.cumsum()
+	monum=((iday.reshape(-1,1)-modat)>0).sum(1)
+	mo=1+monum
+	day=iday-modat[monum]
+	return yr,mo,day,sec,iday
+#
 class vector:
 	def __init__(self,x,y,z,center='geo',scale='si',coord='equ',unit=1.0,type0='pos'):
 		'''
@@ -235,30 +255,39 @@ class vector:
 		unit=1.0, sl, au
 		type0=pos, vel, acc
 		'''
-		if np.array(x).size==np.array(y).size==np.array(z).size:
-			self.x=x
-			self.y=y
-			self.z=z
-			self.center=center
-			self.scale=scale
-			self.coord=coord
-			self.unit=unit
-			self.type=type0
-			self.size=np.array(x).size
+		if np.array(x).size>1:
+			x,y,z=np.array(x),np.array(y),np.array(z)
+			if not x.size==y.size==z.size:
+				raise
+		self.x=x
+		self.y=y
+		self.z=z
+		self.center=center
+		self.scale=scale
+		self.coord=coord
+		self.unit=unit
+		self.type=type0
+		self.size=np.array(x).size
 	#
 	def __str__(self):
 		if self.size>6:
-			x=self.x
+			x=self.x.copy()
 			xstr='[ '+str(x[0])+', '+str(x[1])+', '+str(x[2])+', ..., '+str(x[-3])+', '+str(x[-2])+', '+str(x[-1])+' ]'
-			x=self.y
+			x=self.y.copy()
 			ystr='[ '+str(x[0])+', '+str(x[1])+', '+str(x[2])+', ..., '+str(x[-3])+', '+str(x[-2])+', '+str(x[-1])+' ]'
-			x=self.z
+			x=self.z.copy()
 			zstr='[ '+str(x[0])+', '+str(x[1])+', '+str(x[2])+', ..., '+str(x[-3])+', '+str(x[-2])+', '+str(x[-1])+' ]'
 		else:
 			xstr=str(self.x)
 			ystr=str(self.y)
 			zstr=str(self.z)
 		return 'x='+xstr+',\n y='+ystr+',\n z='+zstr+',\n center='+self.center+', scale='+self.scale+', coord='+self.coord+', unit='+str(self.unit)+', type0='+self.type+', size='+str(self.size)
+	#
+	def __repr__(self):
+		return self.__str__()
+	#
+	def copy(self):
+		return vector(self.x,self.y,self.z,center=self.center,scale=self.scale,coord=self.coord,unit=self.unit,type0=self.type)
 	#
 	def equ2ecl(self):
 		if ((self.scale=='si')|(self.scale=='tdb'))&(self.coord=='equ'):
@@ -318,7 +347,7 @@ class vector:
 			k=np.sqrt(u+v+w**2)-w
 			dd=k*np.sqrt(x**2+y**2)/(k+esq)
 			height=(k+esq-1)/k*np.sqrt(dd**2+z**2)
-			lat=2*np.arctan2(z,d+np.sqrt(d**2+z**2))
+			lat=2*np.arctan2(z,dd+np.sqrt(dd**2+z**2))
 			if y>0:
 				lon=0.5*pi-2.0*np.arctan2(x,np.sqrt(x**2+y**2)+y)
 			else:
@@ -344,12 +373,12 @@ class vector:
 		self.z*=ratio
 		self.unit=unit
 	#
-	def product(self,vec):
+	def dot(self,vec):
 		if self.coord==vec.coord and ((self.scale in ['tdb','si']) and (vec.scale in ['tdb','si'])):
-			self.change_unit(1)
-			vec.change_unit(1)
-			self.si2tdb()
-			vec.si2tdb()
+			self.change_unit(sl)
+			vec.change_unit(sl)
+			self.tdb2si()
+			vec.tdb2si()
 			return self.x*vec.x+self.y*vec.y+self.z*vec.z
 	#
 	def add(self,vec):
@@ -359,10 +388,10 @@ class vector:
 			else:
 				center='bary'
 			if not self.unit==vec.unit:
-				self.change_unit(1)
-				vec.change_unit(1)			
-			self.si2tdb()
-			vec.si2tdb()
+				self.change_unit(sl)
+				vec.change_unit(sl)			
+			self.tdb2si()
+			vec.tdb2si()
 			return vector(self.x+vec.x,self.y+vec.y,self.z+vec.z,center=center,scale=self.scale,coord=self.coord,unit=self.unit,type0=self.type)
 	#
 	def minus(self,vec):
@@ -371,21 +400,30 @@ class vector:
 				center=self.center
 			else:
 				center='bary'
-			self.si2tdb()
-			vec.si2tdb()
+			if not self.unit==vec.unit:
+				self.change_unit(sl)
+				vec.change_unit(sl)			
+			self.tdb2si()
+			vec.tdb2si()
 			return vector(self.x-vec.x,self.y-vec.y,self.z-vec.z,center=center,scale=self.scale,coord=self.coord,unit=self.unit,type0=self.type)
+	#
+	def multi(self,factor,type0=0):
+		if not type0:
+			type0=self.type
+		return vector(self.x*factor,self.y*factor,self.z*factor,center=self.center,scale=self.scale,coord=self.coord,unit=self.unit,type0=type0)
 	#
 	def length(self):
 		if self.scale in ['tdb','si']:
-			self.change_unit(1)
+			self.change_unit(sl)
+			self.tdb2si()
 			return np.sqrt(self.x**2+self.y**2+self.z**2)
 	#
 	def angle(self,vec):
 		if self.coord==vec.coord:
-			if (((self.scale=='si')|(self.scale=='tdb')) and ((vec.scale=='si')|(vec.scale=='si'))) or (self.scale==vec.scale):
+			if (((self.scale=='si')|(self.scale=='tdb')) and ((vec.scale=='si')|(vec.scale=='tdb'))) or (self.scale==vec.scale):
 				l1=self.length()
 				l2=vec.length()
-				return np.arccos((self.x*vec.x+self.y*vec.y+self.z*vec.z)/(l1*l2))
+				return np.arccos(self.dot(vec)/(l1*l2))
 	#
 	def xyz(self):
 		return np.array([self.x,self.y,self.z]).T
@@ -398,7 +436,7 @@ class time:
 		secondmain,secondresi=np.divmod(second+dateresi*unit,unit)
 		size=np.array(date).size
 		if size==np.array(second).size:
-			self.date=np.int32(datemain+secondmain)
+			self.date=np.int(datemain)+np.int(secondmain)
 			self.second=np.float64(secondresi)
 			self.mjd=date+second/unit
 			self.scale=scale
@@ -413,6 +451,30 @@ class time:
 			tstr=str(self.mjd)
 		return 'mjdtime='+tstr+',\n scale='+self.scale+', unit='+str(self.unit)+', size='+str(self.size)
 	#
+	def __repr__(self):
+		return self.__str__()
+	#
+	def copy(self):
+		return time(self.date,self.second,scale=self.scale,unit=self.unit)
+	#
+	def minus(self,time1):
+		if self.unit==time1.unit:
+			return time(self.date-time1.date,self.second-time1.second,scale='delta_t',unit=self.unit)
+	#
+	def add(self,dt,scale=0):
+		if not scale:
+			scale=self.scale
+		dt=np.array(dt)
+		if dt.size==1:
+			dt=dt.reshape(-1)[0]
+			if type(dt)==time:
+				if self.unit==dt.unit and dt.scale=='delta_t':
+					return time(self.date+dt.date,self.second+dt.second,scale=scale,unit=self.unit)
+			else:
+				return time(self.date,self.second+dt,scale=scale,unit=self.unit)
+		elif self.size==dt.size:
+			return time(self.date,self.second+dt,scale=scale,unit=self.unit)
+	#
 	def update(self):
 		datemain,dateresi=np.divmod(self.date,1)
 		secondmain,secondresi=np.divmod(self.second+dateresi*unit,unit)
@@ -422,17 +484,18 @@ class time:
 	def local2unix(self):
 		if self.scale=='local':
 			unit=1
-			date=int((self.date-40587)*86400+self.second)
+			date=np.int64((self.date-40587)*86400+self.second)
 			second=self.second%unit
 			return time(date,second,'unix',unit)			
 	#
 	def local2utc(self):
 		if self.scale=='local':
-			f=open('convensions/'+'local2gps.txt')
+			f=open('./conventions/'+'local2gps.txt')
 			t0=np.int64(f.read(10))
+			t1=np.int64(f.read(30)[20:])
 			flen=f.seek(0,2)/30
-			localunix=local2unix(localmjd)
-			main,resi=np.divmod(localunix.date-t0,10)
+			localunix=self.local2unix()
+			main,resi=np.divmod(localunix.date-t0,t1-t0)
 			nr0=main
 			resi=resi+localunix.second
 			set_nr=list(set(nr0))
@@ -443,24 +506,24 @@ class time:
 				nri=set_nr[i]
 				f.seek(nri*30)
 				interplist.extend(f.read(60).split())
-			t,dt=np.float64(interplist).reshape(2,2).T
+			t,dt=np.float64(interplist).reshape(-1,2).T
 			gpssec=np.interp(self.mjd,t,dt)
 			f.close()
-			f=np.loadtxt('convensions/'+'gps2utc.txt')
+			f=np.loadtxt('./conventions/'+'gps2utc.txt')
 			t,dt=f[:,0:2].T
 			utcsec=np.interp(gpssec/86400+self.mjd,t,dt)*1e-9
 			return utcsec+gpssec
 	#
 	def utc2tai(self):
 		if self.scale=='utc':
-			f=np.loadtxt('convensions/'+'leap.txt')
+			f=np.loadtxt('./conventions/'+'leap.txt')
 			leap_time=np.array(list(map(lambda x:datetime2mjd([x[0],x[1],x[2],0,0,0]).mjd,f))).reshape(-1)
 			leap_time=np.array(list(map(lambda x:f[leap_time<x,3].sum(),self.date)))
 			return -leap_time+10
 	#
 	def tai2utc(self):
 		if self.scale=='tai':
-			f=np.loadtxt('convensions/'+'leap.txt')
+			f=np.loadtxt('./conventions/'+'leap.txt')
 			leap_mjd=np.array(list(map(lambda x:datetime2mjd([x[0],x[1],x[2],0,0,0]).mjd,f))).reshape(-1)
 			leap_tai=leap_mjd*86400-f[:,3].cumsum()-10
 			leap_time=np.array(list(map(lambda x:f[leap_tai<x,3].sum(),self.date*86400+self.second)))
@@ -468,7 +531,7 @@ class time:
 	#
 	def tai2ut1(self):
 		if self.scale=='tai':
-			mjd0,taimjd0,deltat=np.loadtxt('convensions/'+'tai2ut1.txt').T
+			mjd0,taimjd0,deltat=np.loadtxt('./conventions/'+'tai2ut1.txt').T
 			jj=(taimjd0>(self.mjd.min()-1))&(taimjd0<self.mjd.max()+1)
 			taimjd0,deltat=taimjd0[jj],deltat[jj]
 			deltat=np.interp(self.mjd,taimjd0,deltat)
@@ -476,72 +539,93 @@ class time:
 	#
 	def utc2tt(self):
 		if self.scale=='utc':
-			mjd0,deltat=np.loadtxt('convensions/'+'tai2tt.txt')[:,[0,2]].T
+			mjd0,deltat=np.loadtxt('./conventions/'+'tai2tt.txt')[:,[0,2]].T
 			ttmjd=self.utc2tai()+32.184+np.interp(self.mjd,mjd0,deltat)*1e-6
 			return ttmjd
 	#
 	def tai2tt(self):
 		if self.scale=='tai':
 			utc=self.mjd # using tai instead of utc
-			mjd0,deltat=np.loadtxt('convensions/'+'tai2tt.txt')[:,[0,2]].T
+			mjd0,deltat=np.loadtxt('./conventions/'+'tai2tt.txt')[:,[0,2]].T
 			tt_tai=32.184+np.interp(utc,mjd0,deltat)*1e-6
 			return tt_tai
 	#
 	def tt2tai(self):
 		if self.scale=='tt':
-			mjd0,deltat=np.loadtxt('convensions/'+'tai2tt.txt')[:,[0,2]].T
+			mjd0,deltat=np.loadtxt('./conventions/'+'tai2tt.txt')[:,[0,2]].T
 			tt_tai=32.184+np.interp(self.mjd,mjd0,deltat)*1e-6
 			return -tt_tai
+	#
+	def tdb2tcb(self):
+		if self.scale=='tdb':
+			return (self.date-mjd0)*km1*self.unit+self.second*km1-tdb0*np.float64(iftek)
+	#
+	def tcb2tdb(self):
+		if self.scale=='tcb':
+			km2=np.float64(1/iftek-1)
+			return (self.date-mjd0)*self.units*km2+self.second*km2+tdb0
 	#
 	def utc(self):
 		if self.scale=='local':
 			return time(self.date,self.second+self.local2utc(),scale='utc')
 		elif self.scale=='tai':
 			return time(self.date,self.second+self.tai2utc(),scale='utc')
-		elif self.scale=='utc': return self
+		elif self.scale=='utc': return self.copy()
 	#
 	def tai(self):
 		if self.scale=='utc':
 			return time(self.date,self.second+self.utc2tai(),scale='tai')
 		elif self.scale=='tt':
 			return time(self.date,self.second+self.tt2tai(),scale='tai')
-		elif self.scale=='tai': return self
+		elif self.scale=='tai': return self.copy()
 	#
 	def ut1(self):
 		if self.scale=='tai':
 			return time(self.date,self.second+self.tai2ut1(),scale='ut1')
 		elif self.scale=='utc':
 			return self.tai().ut1()
-		elif self.scale=='ut1': return self
+		elif self.scale=='ut1': return self.copy()
 	#
 	def tt(self):
 		if self.scale=='tai':
 			return time(self.date,self.second+self.tai2tt(),scale='tt')
 		elif self.scale=='utc':
 			return time(self.date,self.second+self.utc2tt(),scale='tt')
-		elif self.scale=='tt': return self
+		elif self.scale=='tt': return self.copy()
 #
 class times:
 	def __init__(self,time0):
 		if time0.scale=='local':
-			self.local=time0
+			self.local=time0.copy()
 			self.unix=time0.local2unix()
 			self.utc=time0.utc()
 			self.tai=self.utc.tai()
 			self.ut1=self.tai.ut1()
 			self.tt=self.utc.tt()
 		elif time0.scale=='utc':
-			self.utc=time0
+			self.utc=time0.copy()
 			self.tai=time0.tai()
 			self.ut1=self.tai.ut1()
 			self.tt=self.utc.tt()
 		elif time0.scale=='tai':
-			self.tai=time0
+			self.tai=time0.copy()
 			self.utc=time0.utc()
 			self.ut1=self.tai.ut1()
 			self.tt=self.utc.tt()
 		elif time0.scale=='tt':
-			self.tt=time0
+			self.tt=time0.copy()
+			self.tai=self.tt.tai()
+			self.utc=self.tai.utc()
+			self.ut1=self.tai.ut1()
+		elif time0.scale=='tcb':
+			self.tcb=time0.copy()
+			self.tt=self.tcb2tt()
+			self.tai=self.tt.tai()
+			self.utc=self.tai.utc()
+			self.ut1=self.tai.ut1()
+		elif time0.scale=='tdb':
+			self.tdb=time0.copy()
+			self.tt=self.tdb2tt()
 			self.tai=self.tt.tai()
 			self.utc=self.tai.utc()
 			self.ut1=self.tai.ut1()
@@ -552,9 +636,37 @@ class times:
 		self.tt2tdb()
 		self.ephem()
 	#
+	def tcb2tt(self):
+		t1=self.tcb.copy()
+		t1.scale='tt'
+		tmp=times(t1)
+		dt=tmp.tt.minus(tmp.tcb)
+		dt1=self.tcb.minus(tmp.tcb)
+		dts=((dt1.mjd*dt1.unit)**2).mean()
+		while dts>1e-21:
+			tmp=times(self.tcb.add(dt,scale='tt'))
+			dt=tmp.tt.minus(tmp.tcb)
+			dt1=self.tcb.minus(tmp.tcb)
+			dts=((dt1.mjd*dt1.unit)**2).mean()
+		return tmp.tt
+	#
+	def tdb2tt(self):
+		t1=self.tdb.copy()
+		t1.scale='tt'
+		tmp=times(t1)
+		dt=tmp.tt.minus(tmp.tdb)
+		dt1=self.tdb.minus(tmp.tdb)
+		dts=((dt1.mjd*dt1.unit)**2).mean()
+		while dts>1e-21:
+			tmp=times(self.tdb.add(dt,scale='tt'))
+			dt=tmp.tt.minus(tmp.tdb)
+			dt1=self.tdb.minus(tmp.tdb)
+			dts=((dt1.mjd*dt1.unit)**2).mean()
+		return tmp.tt
+	#
 	def deltat_fb(self):
 		if self.scale=='tt':
-			f=open('convensions/'+'TDB.1950.2050','rb')
+			f=open('./conventions/'+'TDB.1950.2050','rb')
 			b=st.unpack('>2d2i5d',f.read(64))
 			tdbd1,tdbd2,tdbdt,tdbncf=b[:4]
 			block_loc=(self.mjd+2400000.5-tdbd1)/tdbdt
@@ -573,7 +685,7 @@ class times:
 			return tttdb-tdb0
 	#
 	def deltat_if(self):
-		f=open('convensions/'+'TIMEEPH_short.te405','rb')
+		f=open('./conventions/'+'TIMEEPH_short.te405','rb')
 		f.seek(264)
 		startjd,endjd,stepjd,ncon=st.unpack('>3d1L',f.read(28))
 		ipt=np.reshape(st.unpack('>6L',f.read(24)),(2,3))
@@ -616,7 +728,7 @@ class times:
 		return -pv.T
 	#
 	def ve_if(self):
-		f=open('convensions/'+'TIMEEPH_short.te405','rb')
+		f=open('./conventions/'+'TIMEEPH_short.te405','rb')
 		f.seek(264)
 		startjd,endjd,stepjd,ncon=st.unpack('>3d1L',f.read(28))
 		ipt=np.reshape(st.unpack('>6L',f.read(24)),(2,3))
@@ -673,14 +785,14 @@ class times:
 		sitepos=self.sitepos
 		sitevel=self.sitevel
 		#
-		obsterm=self.earthvel.product(self.sitepos)/sl**2/(1-lc)
+		obsterm=self.earthvel.dot(self.sitepos)/sl**2/(1-lc)
 		correction=obsterm+tdb0+deltat/(1-lc)
 		correction1=(correction-tdb0)*np.float64(iftek)+km1*(self.tt.mjd-mjd0)
 		self.tdb=time(self.tt.date,self.tt.second+correction,scale='tdb')
 		self.tcb=time(self.tt.date,self.tt.second+correction1,scale='tcb')
 		deltat,deltat_dot=self.deltat_if()*86400
 		self.ve_if()
-		obstermdot=(self.earthacc.product(self.sitepos)+self.earthvel.product(self.sitevel))/(1-lc)
+		obstermdot=(self.earthacc.dot(self.sitepos)+self.earthvel.dot(self.sitevel))/(1-lc)
 		self.einsteinrate=np.float64(iftek)*(1+obstermdot+deltat_dot/(1-lc))
 	#
 	def ephem(self):
@@ -701,7 +813,8 @@ class times:
 		lat,lon,height=25.65295181388,106.856666872,1110.029
 		lon=lon*np.pi/180
 		lat=lat*np.pi/180
-		site_itrs=vector(lon,lat,height,center='geo',scale='grs80',coord='equ',unit=1.0,type0='pos')
+		self.site_grs80=vector(lon,lat,height,center='geo',scale='grs80',coord='equ',unit=1.0,type0='pos')
+		site_itrs=self.site_grs80.copy()
 		site_itrs.grs802itrs()
 		if not hasattr(self,'nut'):
 			self.ephem()
@@ -724,27 +837,26 @@ class times:
 		prn=get_precessionMatrix(self.ut1.mjd,nut)
 		sitex,sitey,sitez=(prn@eeq).reshape(-1,3).T
 		self.sitepos=vector(sitex,sitey,sitez,center='geo',scale='si',coord='equ',unit=sl,type0='pos')
-		self.sitepos.change_unit(1)
 		sitera = np.arctan2(self.sitepos.y,self.sitepos.x)
 		self.sitepos.equ2ecl()
 		speed=2.0*np.pi*coord0/(86400.0/1.00273)
 		self.sitevel=vector(-np.sin(sitera)*speed,np.cos(sitera)*speed,np.zeros(self.size),center='geo',scale='si',coord='equ',unit=sl,type0='vel')
-		self.sitevel.change_unit(1)
 		self.sitevel.equ2ecl()
 	#
 	def sitecalc(self): #IAU 2000B
 		lat,lon,height=25.65295181388,106.856666872,1110.029
 		lon=lon*np.pi/180
 		lat=lat*np.pi/180
-		site_itrs=vector(lon,lat,height,center='geo',scale='grs80',coord='equ',unit=1.0,type0='pos')
+		self.site_grs80=vector(lon,lat,height,center='geo',scale='grs80',coord='equ',unit=1.0,type0='pos')
+		site_itrs=self.site_grs80.copy()
 		site_itrs.grs802itrs()
 		x,y,z=site_itrs.x,site_itrs.y,site_itrs.z
 		zenith_x=height*np.cos(lon)*np.cos(lat)
 		zenith_y=height*np.sin(lon)*np.cos(lat)
 		zenith_z=height*np.sin(lat)
 		sprime=0.0
-		utc0,xp0,yp0=np.loadtxt('convensions/'+'eopc.txt')[:,3:6].T
-		tai0,dut10=np.loadtxt('convensions/'+'tai2ut1.txt')[:,1:3].T
+		utc0,xp0,yp0=np.loadtxt('./conventions/'+'eopc.txt')[:,3:6].T
+		tai0,dut10=np.loadtxt('./conventions/'+'tai2ut1.txt')[:,1:3].T
 		tai0=np.round(tai0%1*86400)
 		dut1dot0=(dut10[1:]-dut10[:-1])/86400
 		xp=np.interp(self.utc.mjd,utc0,xp0)*(np.pi/(180*60*60))
@@ -830,13 +942,18 @@ class times:
 		t2c=polarmotion@rotz(era,rc2i)
 		crs0=t2c.transpose(0,2,1)@(trs0.reshape(3,1))
 		crs1=t2c.transpose(0,2,1)@(trs1.reshape(-1,3,1))
-		zenith_crs=t2c@np.array([[zenith_x],[zenith_y],[zenith_z]])
+		zenith_crs=t2c.transpose(0,2,1)@np.array([[zenith_x],[zenith_y],[zenith_z]])
 		sitex,sitey,sitez=crs0.reshape(self.size,3).T
 		self.sitepos=vector(sitex,sitey,sitez,center='geo',scale='si',coord='equ',unit=1,type0='pos')
 		self.sitepos.equ2ecl()
+		self.sitepos.change_unit(sl)
 		sitevx,sitevy,sitevz=crs1.reshape(self.size,3).T
 		self.sitevel=vector(sitevx,sitevy,sitevz,center='geo',scale='si',coord='equ',unit=1,type0='vel')
 		self.sitevel.equ2ecl()
+		self.sitepos.change_unit(sl)
+		zenith_x_crs,zenith_y_crs,zenith_z_crs=zenith_crs.reshape(self.size,3).T
+		self.zenith=vector(zenith_x_crs,zenith_y_crs,zenith_z_crs,center='geo',scale='si',coord='equ',unit=1,type0='pos')
+		
 		
 
 
