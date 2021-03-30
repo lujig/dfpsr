@@ -101,7 +101,7 @@ else:
 #
 def shift(y,x):
 	fftp=fft.rfft(y,axis=0)
-	ffts=fftp*np.exp(-2*np.pi*x*1j*np.arange(np.shape(fftp)[-1])).reshape(-1,1)
+	ffts=fftp*np.exp(-2*np.pi*x*1j*np.arange(np.shape(fftp)[0])).reshape(-1,1)
 	fftr=fft.irfft(ffts,axis=0)
 	return fftr
 #
@@ -182,6 +182,7 @@ if args.profile:
 		ax.plot(x,vv,'r-.',label='Cir')
 		ax.legend()
 	else:
+		data=data.sum(-1)
 		ax.plot(x,data,'k-')
 	low=np.min(data)*1.1-np.max(data)*0.1
 	high=np.max(data)*1.1-np.min(data)*0.1

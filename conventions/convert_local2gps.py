@@ -35,11 +35,17 @@ b0,b1=screen(a0,a1)
 #plt.plot(b0,b1)
 #plt.ylim(-0.5e-5,4.5e-5)
 #
-c0=np.arange(b0[0],b0[-1]+10,10,dtype=np.int64)
+dt0=10
+dt1=86400
+c0=np.arange(b0[0],b0[-1]+dt0,dt0,dtype=np.int64)
 c1=np.interp(c0,b0,b1)
+ld=int(len(c0)//(dt1/dt0))
+lc=int(ld*(dt1/dt0))
+d0=c0[int(dt1/dt0/2):lc:int(dt1/dt0)]
+d1=c1[:lc].reshape(ld,-1).mean(1)
 a=open('local2gps.txt','w')
-for i in range(len(c0)):
-	a.write(str(c0[i])+'     '+'{:.12f}'.format(c1[i])+'\n')
+for i in range(ld):
+	a.write(str(d0[i])+'     '+'{:.12f}'.format(d1[i])+'\n')
 a.close()
 
 

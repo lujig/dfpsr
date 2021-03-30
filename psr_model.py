@@ -3,45 +3,37 @@ import time_eph as te
 import subprocess as sp
 import psr_read as pr
 #
-dm_const=2.41e-4 # ??? not 1/4148.808
+dm_const=2.410330871e-4 # ??? not 1/4148.808
 dm_const_si=7.436e6
 kpc2m = 3.08568025e19
 mas_yr2rad_s = 1.536281850e-16
 pxconv = 1.74532925199432958E-2/3600.0e3
-au_dist=149597870700
-aultsc=au_dist/te.sl
-#
-def calculate_gw(ra1,dec1,ra2,dec2):
-	lambda_p,beta_p,lamb,beta=ra1,dec1,ra2,dec2
-	clp,slp,cbp,sbp,cl,sl,cb,sb=np.cos(lambda_p),np.sin(lambda_p),np.cos(beta_p),np.sin(beta_p),np.cos(lamb),np.sin(lamb),np.cos(beta),np.sin(beta)
-	vn=np.array([[clp*cbp,slp*cbp,sbp])
-	costheta=cb*cbp*np.cos(lamb-lambda_p)+sb*sbp
-	e11p,e21p,e31p,e22p,e32p,e33p=sl**2-cl**2*sb**2,-sl*cl*(sb**2+1),cl*sb*cb,cl**2-sl**2*sb**2,sl*sb*cb,-cb**2
-	mep=np.array([[e11p,e12p,e13p],[e12p,e22p,e23p],[e13p,e23p,e33p]])
-	resp=vn@mep@vn.T
-	e11c,e21c,e31c,e22c,e32c,e33c=2*sl*cl*sb,-(cl**2-sl**2)*sb,-sl*cb,-2*sl*cl*sb,cl*cb,0
-	mec=np.array([[e11c,e12c,e13c],[e12c,e22c,e23c],[e13c,e23c,e33c]])
-	resc=vn@mec@vn.T
-	return resp,resc,costheta
+au_dist=149597870691
+aultsc=499.00478364 #au_dist/te.sl
+gg=6.67259e-11
 #
 class psr_timing:
-	def __init__(self,name,time,freq):
-		self.psr=pr.psr(name)
+	def __init__(self,psr,time,freq):
+		self.psr=psr
 		self.time=time
 		self.freq=freq
 		self.compute_te_ssb()
-		self.bat=self.tcb.add(self.dt_ssb)
+		self.bat=self.time.tcb.add(self.dt_ssb)
 		self.compute_shklovskii_delay()
 		self.compute_phase()
 	#
-	def compute_shklovskii_delay():
+	def compute_shklovskii_delay(self):
 		t0=self.bat.minus(self.psr.posepoch).mjd*86400
-		self.shklovskii=t0**2/2/te.sl*self.psr.dshk*kpc2m*(self.psr.pmra**2+self.pmdec**2)*mas_yr2rad_s**2
-		self.bbat=self.bat.minus(self.shklovskii)
+		self.shklovskii=t0**2/2/te.sl*self.psr.dshk*kpc2m*(self.psr.pmra**2+self.psr.pmdec**2)*mas_yr2rad_s**2
+		self.bbat=self.bat.add(-self.shklovskii)
 	#
 	def compute_tropospheric_delay(self):
-		source_elevation=np.arcsin(self.time.zenith.dot(self.psr.pos_equ)/self.time.site_grs80.z*te.sl)
-		pressure=101.325 # unit in hPa
+		if hasattr(self.time,'zenith'):
+			source_elevation=np.arcsin(self.time.zenith.dot(self.psr.pos_equ)/self.time.site_grs80.z*te.sl)
+		else:
+			self.tropo_delay=np.zeros(self.time.size)
+			return
+		pressure=92.5 #101.325 is the normal value # unit in kPa
 		zenith_delay_hydrostatic = 0.022768 * pressure / (te.sl * (1.0-0.00266*np.cos(self.time.site_grs80.y) -2.8e-7*self.time.site_grs80.z))
 		#
 		avgs_a=[1.2769934e-3, 1.2683230e-3, 1.2465397e-3, 1.2196049e-3, 1.2045996e-3]
@@ -94,31 +86,35 @@ class psr_timing:
 		r=rsa.length()
 		ctheta=self.psr_location.dot(rsa)/r
 		voverc=self.psr_location.dot(vobs)
-		freqf=self.freq*1e6*(1-voverc)/self.time.einsteinrate
+		self.vchange=(1-voverc)/self.time.einsteinrate
+		freqf=self.freq*1e6*self.vchange
 		self.freqSSB=freqf
-		dt=(self.time.tcb.mjd-self.psr.dmepoch)/365.25
+		vobs.ecl2equ()
+		dt=(self.time.tcb.minus(self.psr.dmepoch).mjd)/365.25
 		yrs=(dt.reshape(-1,1)/np.arange(1,9)).cumprod(1)
-		dmdot=(self.psr.dm[1:]*yrs[:,:(len(self.psr.dm)-1)]).sum(1)
+		dmdot=(np.array([self.psr.dm1,self.psr.dm2,self.psr.dm3])*yrs[:,:3]).sum(1)
 		if self.psr.dmmodel:
 			dmval=self.psr.dmmodel+np.interp(self.time.tcb.mjd,self.psr.dmoffs_mjd,self.psr.dmoffs)
 			mean_dmoff=self.psr.dmoffs.mean()
 			self.psr.dmoffs-=mean_dmoff
-		elif self.psr.dm:
-			dmval=self.psr.dm[0]
+		elif hasattr(self.psr,'dm'):
+			dmval=self.psr.dm
 			dmval+=np.where((self.time.tcb.mjd.reshape(-1,1)>self.psr.dmxr1)&(self.time.tcb.mjd.reshape(-1,1)<self.psr.dmxr2), self.psr.dmx.repeat(self.time.size).reshape(-1,self.time.size).T,0).sum(1)
 		dmval+=dmdot # ??? this phrase in this position?
 		if self.psr.dm_s1yr:
 			dmval+=self.psr.dm_s1yr*np.sin(2*np.pi*dt)+self.psr.dm_c1yr*np.cos(2*np.pi*dt)
 		self.tdis1=dmval/dm_const/freqf**2*1e12
-		if self.psr.cm:
-			cmval=(self.psr.cm*yrs[:,:len(self.psr.cm)]).sum()
+		if self.psr.cm1:
+			cmval=(np.array([self.psr.cm1,self.psr.cm2,self.psr.cm3])*yrs[:,:3]).sum()
 			self.tdis1+=cmval/dm_const*(freqf*1e-6)**(-self.psr.cmidx)
 		if self.psr.fddc:
 			self.tdis1+=self.psr.fddc/(freqf*1e-6)**self.psr.fddi
 			self.tdis1+=np.polyval(self.psr.fd[::-1],(freqf*1e-9))*(freqf*1e-9)
 		#
-		ne_sw=4  # ???
-		self.tdis2=1.0e6*au_dist**2/te.sl/dm_const_si*ne_sw*np.arccos(ctheta)/r/np.sqrt(1.0-ctheta**2)/freqf**2
+		#if self.psr.ephver==5: ne_sw=4  # ???
+		#else: ne_sw=9.961
+		ne_sw=4
+		self.tdis2=1.0e6*te.au_dist**2/te.sl/dm_const_si*ne_sw*np.arccos(ctheta)/r/np.sqrt(1.0-ctheta**2)/freqf**2
 		#self.tdis2=self.solarWindModel()/dm_const/1.0e-12/freqf/freqf   #More complex solar wind model introduced by Xiaopeng You and William Coles, but the data has been changed.
 	#
 	def solarWindModel(self):
@@ -156,7 +152,7 @@ class psr_timing:
 		delng=np.arctan2(np.sqrt(1-cep**2),cep)
 		blp=np.arctan2(a[:,1],a[:,0]).reshape(-1)%(2*np.pi)
 		ble=np.arctan2(b[:,1],b[:,0]).reshape(-1)%(2*np.pi)
-		zlagtm=au_dist/1000*sl/3600.0/400 # 400 is the velocity of the solarwind
+		zlagtm=te.au_dist/1000*sl/3600.0/400 # 400 is the velocity of the solarwind
 		zhr = (24.*((yr-1969)*365.+(yr-1969)//4+iday-341.0) + self.time.ut1.second/3600. -14.77).reshape(-1,1)
 		zle1 = 228.42-zhr/1.81835
 		zle2 = 228.42 - zhr/1.692002 + ble/deg2rad
@@ -198,14 +194,16 @@ class psr_timing:
 		self.shapiro_solar_system=0
 		pos=self.psr.pos.add(self.psr.vel.multi(delt,type0='pos'))
 		self.psr_location=pos.multi(1/pos.length())
+		self.shapiro=[]
 		for i in np.arange(11):
-			if i==10: mass=self.time.cons['GMS']
-			elif i==9: mass=self.time.cons['GMB']/(1+self.time.cons['EMRAT'])
+			if i==10: mass=self.time.cons['GMS']*te.iftek
+			elif i==9: mass=self.time.cons['GMB']/(1+self.time.cons['EMRAT'])*te.iftek
 			elif i==2: continue
-			else: mass=self.time.cons['GM'+str(i+1)]
+			else: mass=self.time.cons['GM'+str(i+1)]*te.iftek
 			rsa=self.time.pos[2].add(self.time.sitepos).minus(self.time.pos[i])
 			r=rsa.length()
 			ctheta=self.psr_location.dot(rsa)/r
+			self.shapiro.append(-2.0*mass*1e4*aultsc/te.sl*np.log(r/aultsc*(1+ctheta)))
 			self.shapiro_solar_system+=-2.0*mass*1e4*aultsc/te.sl*np.log(r/aultsc*(1+ctheta))
 	#
 	def compute_te_ssb(self):
@@ -220,7 +218,7 @@ class psr_timing:
 			dt_ssb_old=dt_ssb
 			rcos1=self.psr.pos.dot(rca)
 			rr=rca.dot(rca)
-			delt=(self.time.tcb.date-self.psr.posepoch+(self.time.tcb.second+dt_ssb)/86400)/36525
+			delt=(self.time.tcb.minus(self.psr.posepoch).mjd+dt_ssb/86400)/36525
 			pmtrans_rcos2=self.psr.vel.dot(rca)
 			# proper motion
 			dt_pm=delt*pmtrans_rcos2
@@ -237,31 +235,39 @@ class psr_timing:
 			self.compute_shapiro_delay(delt)
 			self.compute_dm_delay(delt)
 			#
-			dt_ssb=self.roemer-self.tdis1-self.tdis2-self.shapiro_solar_system-self.tropo_delay # -self.iono_delay # ???
+			dt_ssb=self.roemer-self.tdis1-self.tdis2-self.shapiro_solar_system
 			if loop>1000 or np.max(np.abs(dt_ssb-dt_ssb_old))<1e-10:  # or self.veryfast
 				break
 			loop+=1
 		#
-		self.dt_ssb=dt_ssb
+		self.dt_ssb=dt_ssb-self.tropo_delay # -self.iono_delay # ???
 	#
 	def compute_phase(self):
 		coalesceFlag,coalesceFlag_p=0,0
-		if self.binary:
+		deltaT=self.bbat.minus(self.psr.pepoch)
+		if self.psr.binary:
 			self.torb=self.compute_binary()
-		deltaT=self.bbat.minus(self.psr.pepoch).add(self.torb)
+			deltaT=deltaT.add(self.torb)
 		ftpd=deltaT.second/deltaT.unit
-		ntpd=deltaT.date
-		nf0=np.int(np.floor(self.psr.f0))
-		ff0=self.psr.f0-nf0
+		ntpd=deltaT.date*1.0
+		tmp=str(self.psr.f0).split('.')
+		nf0=int(tmp[0])
+		ff0=np.float64('0.'+tmp[1])
 		phase2=nf0*ftpd+ff0*ntpd+ftpd*ff0
+		#print(nf0,ff0,ftpd[0])
 		phase2*=86400
-		phase0=ntpd*nf0
+		phase0=te.time(ntpd*nf0*86400,np.zeros_like(ntpd),scale='phase',unit=1)
+		phase0=phase0.add(phase2)
 		#
-		phase3=1/2*deltaT.mjd**2*(self.psr.f1+1/3*deltaT.mjd*(self.psr.f2+1/4*deltaT.mjd*self.psr.f3))  # precision???
-		if hasattr(self.psr,'mode_switch'): phase2state=self.psr.mode_switch
-		if hasattr(self.psr,'brake:'):
-			arg3=deltaT.mjd**3
-			arg4=deltaT.mjd*arg3
+		deltat=deltaT.mjd*deltaT.unit
+		phase3=1/2*deltat**2*(self.psr.f1+1/3*deltat*(self.psr.f2+1/4*deltat*(self.psr.f3+1/5*deltat*(self.psr.f4+1/6*deltat*self.psr.f5))))  # precision???
+		self.period_now=1/(self.psr.f0+deltat*(self.psr.f1+1/2*deltat*(self.psr.f2+1/3*deltat*(self.psr.f3+1/4*deltat*(self.psr.f4+1/5*deltat*self.psr.f5)))))
+		self.period_earth=self.period_now*self.vchange
+		if 'mode_switch' in self.psr.paras: phase2state=self.psr.mode_switch
+		else: phase2state=0
+		if 'brake' in self.psr.paras:
+			arg3=deltat**3
+			arg4=deltat*arg3
 			f1=self.psr.f1
 			f0=self.psr.f0
 			bindex=self.psr.brake
@@ -270,9 +276,9 @@ class psr_timing:
 			phase3+=f2brake*arg3/6+f3brake*args4/24
 		#
 		phase4=0
-		if hasattr(self.psr,'glep'):
+		if 'glep' in self.psr.paras:
 			for k in np.arange(len(self.psr.glep)):
-				tp=deltaT.mjd*86400
+				tp=deltat*86400
 				tgl=self.psr.glep[k].minus(self.psr.pepoch).mjd*86400
 				if tp>=tgl:
 					dt1=tp-tgl
@@ -280,7 +286,7 @@ class psr_timing:
 					else: expf=1.0
 					phase4+=self.psr.glph[k]+dt1*(self.psr.glf0[k]+1/2*dt1*(self.psr.glf1[k]+1/3*dt1*self.psr.glf2[k]))+self.psr.glf0d[k]*self.psr.gltd[k]*86400*(1-expf)
 		# glep,gltd,glph,glf0,glf1,glf2,glf0d,expep,expindex,expph,exptau,gausep,gausamp,gaussig,gausindex,wave_om,wave_om_dm,wave_epoch,wave_sin,wave_cos,wave_scale,wave_sin_dm,wave_cos_dm
-		if hasattr(self.psr,'expep'):
+		if 'expep' in self.psr.paras:
 			for k in np.arange(len(self.psr.expep)):
 				dt=self.bbat.minus(self.psr.expep[k]).mjd
 				if dt>0:
@@ -291,7 +297,7 @@ class psr_timing:
 					tau=self.psr.exptau[k]
 					phase4+=dm*freq**gamma*np.exp(-dt/tau)*self.psr.f0
 		#
-		if hasattr(self.psr,'gausep'):
+		if 'gausep' in self.psr.paras:
 			for i in np.arange(len(self.psr.gausep)):
 				freq=self.freqSSB/1.4e9
 				dt=self.bbat.minus(self.psr.gausep[k]).mjd
@@ -303,19 +309,19 @@ class psr_timing:
 				phase4+=val*self.psr.f0
 		#
 		phaseJ=0
-		if hasattr(self,'obsNjump'):
+		if 'obsNjump' in self.psr.paras:
 			for k in np.arange(len(self.psr.njumps)):
 				for l in np.arange(len(self.obsNjump)):
 					if self.jump[l]==k and self.psr.jumpSAT[l]==0:
-						phaseJ+=self.jumpVal*self.psr.f0
+						phaseJ+=self.psr.jumpval*self.psr.f0
 			for k in np.arange(len(self.psr.nfdjumps)):
-				for l in np.arange(len(self.obsNjump)):
+				for l in np.arange(len(self.obsNfdjump)):
 					if self.fdjump[l]==k:
 						idx=self.psr.fdjumpidx[k]
 						phaseJ+=self.psr.fdjumpval[k]*(self.freqSSB/1e9)**idx*self.psr.f0
 		#
 		phaseW=0
-		if hasattr(self.psr,'wave_om'):
+		if 'wave_om' in self.psr.paras:
 			dt=self.bbat.minus(self.psr.wave_epoch).mjd
 			om=self.psr.wave_om
 			for k in np.arange(len(self.psr.nwhite)):
@@ -329,15 +335,15 @@ class psr_timing:
 					freq=self.freq
 					phaseW+=self.psr.wave_sin[k]*np.sin(om_eff*dt)*self.psr.f0+self.psr.wave_cos[k]*np.cos(om_eff*dt)*self.psr.f0
 					phaseW+=(self.psr.wave_sin_dm[k]*np.sin(om_eff*dt)*self.psr.f0+self.psr.wave_cos_dm[k]*np.cos(om_eff*dt)*self.psr.f0)/(dm_const*freq**2)
-		if hasattr(self.psr,'wave_om_dm'):
+		if 'wave_om_dm' in self.psr.paras:
 			dt=self.bbat.minus(self.psr.wave_epoch).mjd
 			om=self.psr.wave_om_dm
 			om_eff=om*(1+k)
 			freq=self.freq
 			phaseW+=(self.psr.wave_sin_dm[k]*np.sin(om_eff*dt)*self.psr.f0+self.psr.wave_cos_dm[k]*np.cos(om_eff*dt)*self.psr.f0)/(dm_const*freq**2)
 		# quad_om
-		if hasattr(self.psr,'quad_om'):
-			dt=self.bbat.minus(self.psr.wave_epoch).mjd*86400
+		if 'quad_om' in self.psr.paras:
+			dt=self.bbat.minus(self.psr.quadepoch).mjd*86400
 			resp,resc,costheta=calculate_gw(self.psr.raj,self.psr.decj,self.psr.quadra,self.psr.quaddec)
 			for k in np.arange(self.psr.nquad):
 				omega_g=self.psr.quad_om*(k+1)
@@ -354,7 +360,7 @@ class psr_timing:
 					res_i=1/(2*omega_g*(1-costheta))*res_i
 				phaseW+=(res_r+res_i)*self.psr.f0
 		#
-		if hasattr(self.psr,'gwecc'):
+		if 'gwecc' in self.psr.paras:
 			ra_p=self.psr.raj
 			dec_p=self.psr.decj
 			ra_g=self.psr.gwecc_ra
@@ -368,16 +374,16 @@ class psr_timing:
 			prev_a=(6.67e-11*(self.psr.gwecc_m1+self.psr.gwecc_m2)*19891e30*(2*np.pi/prev_p)**-2)**(1/3)
 			prev_a_p=(6.67e-11*(self.psr.gwecc_m1+self.psr.gwecc_m2)*19891e30*(2*np.pi/prev_p)**-2)**(1/3)
 			if self.psr.gwecc_pulsar_term_on==0:
-				phaseW+=self.psr.gwecc*(eccRes(prev_p,prev_e,prev_a,prev_epoch,prev_theta))*self.psr.f0
+				phaseW+=self.psr.gwecc*(self.eccRes(prev_p,prev_e,prev_a,prev_epoch,prev_theta))*self.psr.f0
 			elif self.psr.gwecc_pulsar_term_on==1:
-				phaseW+=self.psr.gwecc*(eccRes(prev_p,prev_e,prev_a,prev_epoch,prev_theta)-eccRes(prev_p_p,prev_e_p,prev_a_p,prev_epoch_p,prev_theta_p))*self.psr.f0
+				phaseW+=self.psr.gwecc*(self.eccRes(prev_p,prev_e,prev_a,prev_epoch,prev_theta)-self.eccRes(prev_p_p,prev_e_p,prev_a_p,prev_epoch_p,prev_theta_p))*self.psr.f0
 			elif self.psr.gwecc_pulsar_term_on==2:
-				phaseW+=self.psr.gwecc*(-eccRes(prev_p_p,prev_e_p,prev_a_p,prev_epoch_p,prev_theta_p))*self.psr.f0
+				phaseW+=self.psr.gwecc*(-self.eccRes(prev_p_p,prev_e_p,prev_a_p,prev_epoch_p,prev_theta_p))*self.psr.f0
 		#
-		if hasattr(self.psr,'gwsingle') or hasattr(self.psr,'cgw'):
+		if ('gwsingle' in self.psr.paras) or ('cgw' in self.psr.paras):
 			dt=self.bbat.minus(self.psr.gwsrc_epoch).mjd*86400
 			resp,resc,costheta=calculate_gw(self.psr.raj,self.psr.decj,self.psr.gwsrc_ra,self.psr.gwsrc_dec)
-			if self.psr.gwsingle:
+			if 'gwsingle' in self.psr.paras:
 				omega_g=self.psr.gwsingle
 				tmp_r=self.psr.gwsrc_aplus_r[k]*resp+self.psr.gwsrc_across_r[k]*resc
 				tmp_i=self.psr.gwsrc_aplus_i[k]*resp+self.psr.gwsrc_across_i[k]*resc
@@ -412,16 +418,18 @@ class psr_timing:
 					res_i=1/(2*omega_g*(1-costheta))*res_i
 				phaseW+=(res_r+res_i)*self.psr.f0
 		#
-		if hasattr(self.psr,'amp'):
+		if 'amp' in self.psr.paras:
+			self.psr.quad_ifunc_geom_p=0
+			self.psr.quad_ifunc_geom_c=0
 			if self.psr.amp[0] and not self.psr.amp[1]:
-				dt=self.bbat.minus(self.psr.gwsrc_epoch).mjd*86400
+				dt=self.bbat.minus(self.psr.gwm_epoch).mjd*86400
 				lambda_p=self.psr.raj
 				beta_p=self.psr.decj
 				lamb=self.psr.gwm_raj
 				beta=self.psr.gwm_decj
 				clp,slp,cbp,sbp,cl,sl,cb,sb=np.cos(lambda_p),np.sin(lambda_p),np.cos(beta_p),np.sin(beta_p),np.cos(lamb),np.sin(lamb),np.cos(beta),np.sin(beta)
-				vn=np.array([[clp*cbp,slp*cbp,sbp])
-				vg=np.array([[-cl*cb,sl*cb,sb])
+				vn=np.array([[clp*cbp,slp*cbp,sbp]])
+				vg=np.array([[-cl*cb,sl*cb,sb]])
 				costheta=cb*cbp*np.cos(lamb-lambda_p)+sb*sbp
 				vd=np.array([[0,0,1]])
 				if self.time.tcb.mjd>self.psr.gwm_epoch.mjd:
@@ -451,8 +459,11 @@ class psr_timing:
 					self.psr.quad_ifunc_geom_p=resp
 					self.psr.quad_ifunc_geom_c=resc
 					phaseW+=(self.psr.gwm_amp[0]*resp+self.psr.gwm_amp[1]*resc)*self.psr.f0*dt
+		else:
+			self.psr.quad_ifunc_geom_p=0
+			self.psr.quad_ifunc_geom_c=0
 		#
-		if hasattr(self.psr,'gwcs_amp'):
+		if 'gwcs_amp' in self.psr.paras:
 			dt=self.bbat.minus(self.psr.gwcs_epoch).mjd*86400
 			resp,resc,costheta=calculate_gw(self.psr.raj,self.psr.decj,self.psr.gwcs_raj,self.psr.gwcs_dec)
 			if costheta==1.0: resp,resc=0.0,0.0
@@ -473,13 +484,16 @@ class psr_timing:
 			else:
 				extra=-0.25*(0.5**(1/3)*self.psr.gwcs_amp*width**(4/3))
 			phaseW=(extra[0]*resp+extra[1]*resc)*self.psr.f0
+		else:
+			self.psr.gwcs_geom_p=0
+			self.psr.gwcs_geom_c=0
 		#
-		if hasattr(self.psr,'clk_offsT'):
+		if 'clk_offsT' in self.psr.paras:
 			for k in np.arange(len(self.psr.clk_offsT)-1):
-				if self.time.bbat>=self.psr.clk_offsT[k] and self.time.bbat<self.psr.clk_offsT[k+1]:
+				if self.time.bbat.mjd>=self.psr.clk_offsT[k] and self.time.bbat.mjd<self.psr.clk_offsT[k+1]:
 					phaseW+=self.psr.clk_offsV[k]*self.psr.f0
 		#
-		if hasattr(self.psr,'ifunc'):
+		if 'ifunc' in self.psr.paras:
 			if self.psr.ifunc==1: #sinc interpolation
 				speriod=self.psr.ifuncT[1]-self.psr.ifuncT[0]
 				for k in np.arange(len(self.psr.ifuncT)):
@@ -500,7 +514,7 @@ class psr_timing:
 						break
 				phaseW+=ival*self.psr.f0
 		#
-		if hasattr(self.psr,'quad_ifunc_p'):
+		if 'quad_ifunc_p' in self.psr.paras:
 			if (self.psr.quad_ifunc_geom_p == 0) & (self.psr.quad_ifunc_p in [0,1,3]) :
 				if self.psr.quad_ifunc_p==3: self.psr.quad_ifunc_geom_p =1
 				else:
@@ -509,7 +523,7 @@ class psr_timing:
 					else: resp=resp/(2*(1-costheta))
 					self.psr.quad_ifunc_geom_p = resp
 				ival=np.interp(self.time.tcb,self.psr.quad_ifuncT_p,self.psr.quad_ifuncV_p)
-				phaseW+=self.psr.f0*ival*resp
+				phaseW+=self.psr.f0*ival*self.psr.quad_ifunc_geom_p
 			if (self.psr.quad_ifunc_p==2):
 				if self.psr.quad_ifunc_geom_p == 0:
 					if self.psr.simflag: lp,bp=self.psr.rasim,self.psr.decsim
@@ -529,9 +543,9 @@ class psr_timing:
 					resp=0.5*(1-ctheta)*c2phi
 					self.psr.quad_ifunc_geom_p = resp
 				ival=np.interp(self.time.tcb,self.psr.quad_ifuncT_p,self.psr.quad_ifuncV_p)
-				phaseW+=self.psr.f0*ival*resp
+				phaseW+=self.psr.f0*ival*self.psr.quad_ifunc_geom_p
 		#
-		if hasattr(self.psr,'quad_ifunc_c'):
+		if 'quad_ifunc_c' in self.psr.paras:
 			if (self.psr.quad_ifunc_geom_c == 0) & (self.psr.quad_ifunc_c in [0,1,3]) :
 				if self.psr.quad_ifunc_c==3: self.psr.quad_ifunc_geom_c =1
 				else:
@@ -540,9 +554,9 @@ class psr_timing:
 					else: resc=resc/(2*(1-costheta))
 					self.psr.quad_ifunc_geom_c = resc
 				ival=np.interp(self.time.tcb,self.psr.quad_ifuncT_c,self.psr.quad_ifuncV_c)
-				phaseW+=self.psr.f0*ival*resc
-			if (self.psr.quad_ifunc_p==2):
-				if self.psr.quad_ifunc_geom_p == 0:
+				phaseW+=self.psr.f0*ival*self.psr.quad_ifunc_geom_c
+			if (self.psr.quad_ifunc_c==2):
+				if self.psr.quad_ifunc_geom_c == 0:
 					if self.psr.simflag: lp,bp=self.psr.rasim,self.psr.decsim
 					else: lp,bp=self.psr.raj,self.psr.decj
 					lg,bg=self.psr.quad_ifunc_c_ra,self.psr.quad_ifunc_c_dec
@@ -562,9 +576,9 @@ class psr_timing:
 					resc=0.5*(1-ctheta)*c2phi
 					self.psr.quad_ifunc_geom_c = resc
 				ival=np.interp(self.time.tcb,self.psr.quad_ifuncT_c,self.psr.quad_ifuncV_c)
-				phaseW+=self.psr.f0*ival*resc
+				phaseW+=self.psr.f0*ival*self.psr.quad_ifunc_geom_c
 		#
-		if hasattr(self.psr,'gwb_amp'):
+		if 'gwb_amp' in self.psr.paras:
 			if self.psr.gwb_amp[0] and self.psr.gwb_amp[1]:
 				resp,resc,costheta=calculate(self.psr.raj,self.psr.decj,self.psr.gwb_raj,self.psr.gwb_decj)
 				if costheta==1: resp,resc=0,0
@@ -573,12 +587,75 @@ class psr_timing:
 					resc=resc/(2*(1-costheta))
 				self.psr.gwb_geom_p=resp
 				self.psr.gwb_geom_c=resc
-				dt=self.psr.bbat.minus(self.psr.gwb_epoch).mjd
+				dt=(self.psr.bbat.minus(self.psr.gwb_epoch).mjd)/self.psr.gwb_width
 				prefac=dt*np.exp(-dt**2/2)
 				phaseW+=self.psr.f0*prefac*(self.psr.gwb_amp[0]*resp+self.psr.gwb_amp[1]*resc)
 		#
-		phase1=phase2+phase3+phase4+phaseJ+phaseW+phase2state
-		self.phase=te.time(phase0,phase1,scale='phase',unit=1)
+		phase1=phase3+phase4+phaseJ+phaseW+phase2state
+		#print(nf0*ntpd[0]*86400.0, phase2[0],phase3[0],phase1[0]+phase2[0])
+		self.phase=phase0.add(phase1)
+	#
+	def eccRes(self,prev_p,prev_e,prev_a,prev_epoch,prev_theta):
+		msun=self.time.cons['GMS']/gg*aultsc*te.sl**2*1e4*te.iftek
+		mpc_to_m=kpc2m*1e3
+		ra_p=self.psr.raj
+		dec_p=self.psr.decj
+		ra_g=self.psr.gwecc_ra
+		dec_g=self.psr.gwecc_dec
+		m1=self.psr.gwecc_m1*msun
+		m2=self.psr.gwecc_m2*msun
+		inc=self.psr.gwecc_inc
+		theta_n=self.psr.gwecc_theta_nodes
+		phi=self.psr.gwecc_nodes_orientation
+		z=self.psr.gwecc_redshift
+		dd=self.psr.gwess_distance*mpc_to_m
+		t_0=self.psr.gwecc_epoch.mjd
+		rs_m1=2*gg*m1/te.sl**2
+		time=(self.time.tcb.minus(self.residual).minus(prev_epoch).mjd)/(1+z)
+		tint=86400*time/np.abs(100*np.floor(time))
+		nt=np.int64(np.abs(100*np.floor(time)))
+		if nt>1e6:
+			tint=86400*time/1e6
+			nt=1e6
+		theta=prev_theta*1
+		ec=prev_e*1
+		ax=prev_a*1
+		ih=0
+		coalesceflag=0
+		while ih<nt and coalesceflag==0:
+			k1=tint*(-64/5)*(gg/ax)**3*m1*m2*(m1+m2)*te.sl**(-5)*(1-ec**2)**(-3.5)*(1+73*ec**2/24+37*ec**4/96)			
+			l1=tint*(-304/15)*gg**3*m1*m2*(m1+m2)*te.sl**(-5)*ax**(-4)*(1-ec**2)**(-2.5)*ec*(1+121*ec**2/304)
+			if ax+k1/2.<1.5*rs_m1: coalesceflag=1
+			k2=tint*(-64./5.)*(gg/(ax+k1/2))**3*m1*m2*(m1+m2)*te.sl**(-5)*(1-(ec+l1/2)**2)**(-3.5)*(1+73*(ec+l1/2)**2/24+37*(ec+l1/2)**4/96)
+			l2=tint*(-304/15)*gg**3*m1*m2*(m1+m2)*te.sl**(-5)*(ax+k1/2)**(-4)*(1-(ec+l1/2)**2)**(-2.5)*(ec+l1/2)*(1+121*(ec+l1/2)**2/304)
+			if ax+k2/2.<1.5*rs_m1: coalesceflag=1
+			k3=tint*(-64./5.)*(gg/(ax+k2/2))**3*m1*m2*(m1+m2)*te.sl**(-5)*(1-(ec+l2/2)**2)**(-3.5)*(1+73*(ec+l2/2)**2/24+37*(ec+l2/2)**4/96)		
+			l3=tint*(-304/15)*gg**3*m1*m2*(m1+m2)*te.sl**(-5)*(ax+k2/2)**(-4)*(1-(ec+l2/2)**2)**(-2.5)*(ec+l2/2)*(1+121*(ec+l2/2)**2/304)
+			if ax+k3/2.<1.5*rs_m1: coalesceflag=1
+			k4=tint*(-64./5.)*(gg/(ax+k3/2))**3*m1*m2*(m1+m2)*te.sl**(-5)*(1-(ec+l3/2)**2)**(-3.5)*(1+73*(ec+l3/2)**2/24+37*(ec+l3/2)**4/96)
+			l4=tint*(-304/15)*gg**3*m1*m2*(m1+m2)*te.sl**(-5)*(ax+k3/2)**(-4)*(1-(ec+l3/2)**2)**(-2.5)*(ec+l3/2)*(1+121*(ec+l3/2)**2/304)
+			ax+=(k1+2.*k2+2.*k3+k4)/6
+			ec+=(l1+2.*l2+2.*l3+l4)/6
+			theta+=tint*2*np.pi/prev_p
+			if ax<1.5*rs_m1: coalesceflag=1
+			prev_p=1/(np.sqrt(gg*(m1+m2)*ax**(-3))/(2*np.pi))
+			ih+=1
+		if coalesceflag==1:
+			pert=0
+		else:
+			prev_e=ec
+			prev_epoch=self.time.tcb.minus(self.residual)
+			prev_theta=theta
+			prev_a=ax
+			aag=4*gg**2*m1*m2/(te.sl**4*dd*(1-ec**2)*ax)
+			frontterm=-aag*(1-ec**2)**(3/2)*prev_p*np.sin(theta)/(32*np.pi*(1+ec*np.cos(theta)))
+			rplus=frontterm*(ec*np.cos(2*(inc-phi))+ec*np.cos(2*(inc+phi))-16*np.cos(inc)*np.sin(2*phi)*np.sin(theta-2*theta_n)+8*ec*np.cos(inc)*np.sin(2*phi)*np.sin(2*theta_n)+2*np.cos(2*phi)*(-ec+(3+np.cos(2*inc))*(ec+2*np.cos(theta))*np.cos(2*theta_n)+2*(3+np.cos(2*inc))*np.sin(theta)*np.sin(2*theta_n)))
+			rcross=frontterm*(ec*np.cos(2*(inc-phi))+ec*np.cos(2*(inc+phi))+8*np.cos(inc)*np.cos(2*phi)*(-2*np.sin(theta-2*theta_n)+ec*np.sin(2*theta_n))-2*np.sin(2*phi)*(-ec+(3+np.cos(2*inc))*(ec+2*np.cos(theta))*np.cos(2*theta_n)+2*(3+np.cos(2*inc))*np.sin(theta)*np.sin(2*theta_n)))
+			dalpha=ra_g-ra_p
+			gplus=(-(1+3*np.cos(2*dec_p))*np.cos(dec_g)**2+np.cos(2*dalpha)*(-3+np.cos(2*dec_g))*np.sin(dec_p)**2+2*np.cos(dalpha)*np.sin(2*dec_g)*np.sin(2*dec_p))/(8*(-1+np.cos(dec_p)*np.sin(dec_g)+np.cos(dalpha)*np.cos(dec_g)*np.sin(dec_p)))
+			gcross=((-np.cos(dec_g)*np.cos(dec_p)+np.cos(dalpha)*np.sin(dec_g)*np.sin(dec_p))*np.sin(dalpha)*np.sin(dec_p))/(-1+np.cos(dec_p)*np.sin(dec_g)+np.cos(dalpha)*np.cos(dec_g)*np.sin(dec_p))
+			pert=1e9*(rplus*gplus+rcross*gcross)
+		return pert
 	#
 	def compute_binary(self):
 		if self.psr.binary=='BT': return self.BTmodel()
@@ -597,7 +674,7 @@ class psr_timing:
 		if self.psr.binary=='T2_PTA': return self.T2_PTAmodel()
 	# 
 	def BTmodel(self):
-		tt0=(self.bbat.mjd-self.psr.t0)*86400
+		tt0=self.bbat.minus(self.psr.t0).mjd*86400
 		pb=self.psr.pb*86400
 		edot=0.0
 		ecc=self.psr.ecc+edot*tt0
@@ -610,9 +687,9 @@ class psr_timing:
 		gamma=self.psr.gamma
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
 		phase=2*np.pi*(orbits%1)
-		ep=phase
+		ep=phase*1.0
 		dep=1
-		while np.abs(dep>1e-12):
+		while np.min(np.abs(dep))>1e-12:
 			dep=(phase-(ep-ecc*np.sin(ep)))/(1-ecc*np.cos(ep))
 			ep+=dep
 		alpha=asini*np.sin(omega)
@@ -624,7 +701,7 @@ class psr_timing:
 		return torb
 	#
 	def BTJmodel(self):
-		tt0=(self.bbat.mjd-self.psr.t0)*86400
+		tt0=self.bbat.minus(self.psr.t0).mjd*86400
 		pb=self.psr.pb*86400
 		edot=0.0
 		ecc=self.psr.ecc+edot*tt0
@@ -637,17 +714,17 @@ class psr_timing:
 		gamma=self.psr.gamma
 		torb=0
 		for i in np.arange(self.psr.bpjep.size):
-			if self.bbat>self.psr.bpjep[i]:
-				torb-=self.psr.bpjph[i]/self.psr.f0
-				asini+=self.psr.bpja1[i]
-				ecc+=self.psr.bpjec[i]
-				omega+=self.psr.bpjom[i]
-				pb+=self.psr.bpjpb[i]
+			jj=(self.bbat.mjd>self.psr.bpjep[i])
+			torb[jj]-=self.psr.bpjph[i]/self.psr.f0
+			asini[jj]+=self.psr.bpja1[i]
+			ecc[jj]+=self.psr.bpjec[i]
+			omega[jj]+=self.psr.bpjom[i]
+			pb[jj]+=self.psr.bpjpb[i]
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
 		phase=2*np.pi*(orbits%1)
-		ep=phase
+		ep=phase*1.0
 		dep=1
-		while np.abs(dep>1e-12):
+		while np.min(np.abs(dep))>1e-12:
 			dep=(phase-(ep-ecc*np.sin(ep)))/(1-ecc*np.cos(ep))
 			ep+=dep
 		alpha=asini*np.sin(omega)
@@ -659,7 +736,7 @@ class psr_timing:
 		return torb
 	#
 	def BTXmodel(self):
-		tt0=(self.bbat.mjd-self.psr.t0)*86400
+		tt0=self.bbat.minus(self.psr.t0).mjd*86400
 		edot=0.0
 		ecc=self.psr.ecc+edot*tt0
 		xdot=self.psr.a1dot
@@ -667,29 +744,28 @@ class psr_timing:
 		omdot=self.psr.omdot
 		omega=(self.psr.om+omdot*tt0/(86400*365.25))/180*np.pi
 		gamma=self.psr.gamma
-		orbits=self.psr.fb*tt0
-		orbits=np.polyval(((self.psr.fb/np.arange(len(self.psr.fb))).cumprod())[::-1],tt0)*tt0
+		orbits=tt0*(self.psr.fb0+1/2*tt0*(self.psr.fb1+1/3*tt0*(self.psr.fb2+1/4*tt0*self.psr.fb3)))
 		phase=2*np.pi*(orbits%1)
-		ep=phase
+		ep=phase*1.0
 		dep=1
-		while np.abs(dep>1e-12):
+		while np.min(np.abs(dep))>1e-12:
 			dep=(phase-(ep-ecc*np.sin(ep)))/(1-ecc*np.cos(ep))
 			ep+=dep
 		alpha=asini*np.sin(omega)
 		beta=asini*np.cos(omega)*np.sqrt(1-ecc**2)
 		sbe,cbe=np.sin(ep),np.cos(ep)
 		q=alpha*(cbe-ecc)+(beta+gamma)*sbe
-		vr_c=(-alpha*sbe+beta*cbe)*1/(1-ecc*cbe)*(2*np.pi*self.psr.fb)
+		vr_c=(-alpha*sbe+beta*cbe)*1/(1-ecc*cbe)*(2*np.pi*self.psr.fb0)
 		torb=-q+q*vr_c
 		return torb
 	# 
 	def ELL1model(self):
-		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4
+		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
 		a0,b0=0.0,0.0
 		pbdot=self.psr.pbdot
 		si=self.psr.sini
 		t0asc=self.psr.tasc
-		tt0=(self.bbat.mjd-t0asc)*86400
+		tt0=self.bbat.minus(t0asc).mjd*86400
 		if si>1.0: 
 			si=1.0
 			self.psr.sini=1.0
@@ -701,19 +777,19 @@ class psr_timing:
 		eps2dot=self.psr.eps2dot
 		e1=self.psr.eps1+eps1dot*tt0
 		e2=self.psr.eps2+eps2dot*tt0
-		if self.psr.fb:
-			orbits=np.polyval(((self.psr.fb/np.arange(len(self.psr.fb))).cumprod())[::-1],tt0)*tt0
-			pb=1/self.psr.fb
+		if self.psr.fb0:
+			orbits=tt0*(self.psr.fb0+1/2*tt0*(self.psr.fb1+1/3*tt0*(self.psr.fb2+1/4*tt0*self.psr.fb3)))
+			pb=1/self.psr.fb0
 		else:
 			pb=self.psr.pb*86400
 			orbits=tt0/pb
 		orbits-=0.5*(pbdot+xpbdot)*(tt0/pb)**2
-		if self.psr.orbifuncT:
+		if 'orbifuncT' in self.psr.paras:
 			if self.psr.orbifunc==1:
 				t1=0.0
-				speriod=self.psr.orbifuncT[1]-self.psr.obrifuncT[0]
-				for k in psr.orbifuncN:
-					dt=self.bbat.minus(self.psr.orbifuncT[k]
+				speriod=self.psr.orbifuncT.mjd[1]-self.psr.obrifuncT.mjd[0]
+				for k in np.arange(len(self.psr.orbifuncV)):
+					dt=self.bbat.mjd-self.psr.orbifuncT.mjd[k]
 					wi=1
 					if dt==0: t1+=self.psr.orbifuncV[k]
 					else: 
@@ -721,9 +797,13 @@ class psr_timing:
 						t1+=self.psr.orbifuncV[k]*np.sin(tt)/tt
 				orbits+=t1
 			elif self.psr.orbifunc==2:
-				orbits+=np.interp(self.time.tcb.mjd,self.psr.orbifuncT,self.orbifuncV)
+				orbits+=np.interp(self.time.tcb.mjd,self.psr.orbifuncT.mjd,self.orbifuncV)
 			elif self.psr.orbifunc==0 and self.psr.orbifuncT:
-				orbits+=self.psr.orbifuncV[np.argmax(self.time.tcb.mjd>self.psr.orbifuncT)]
+				order=np.argsort(self.psr.orbifuncT.mjd)
+				orbifuncT=self.psr.orbifuncT.mjd[order]
+				orbifuncV=self.psr.orbifuncV[order]
+				for k in np.arange(len(orbits)):
+					orbits[k]+=orbifuncV[np.argmax(self.time.tcb.mjd[k]>orbifuncT)]
 		phase=2*np.pi*(orbits%1)
 		dre=x0*(np.sin(phase)-0.5*(e1*np.cos(2*phase)-e2*np.sin(2*phase)))
 		brace=1-si*np.sin(phase)
@@ -738,12 +818,12 @@ class psr_timing:
 		return torb
 	#
 	def ELL1Hmodel(self):
-		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4
+		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
 		a0,b0=0.0,0.0
 		pbdot=self.psr.pbdot
 		si=self.psr.sini
 		t0asc=self.psr.tasc
-		tt0=(self.bbat.mjd-t0asc)*86400
+		tt0=self.bbat.minus(t0asc).mjd*86400
 		if si>1.0: 
 			si=1.0
 			self.psr.sini=1.0
@@ -757,16 +837,17 @@ class psr_timing:
 		e2=self.psr.eps2+eps2dot*tt0
 		pb=self.psr.pb*86400
 		h3=self.psr.h3
-		if self.psr.h4:
+		nharm=4
+		if 'h4' in self.psr.paras:
 			h4=self.psr.h4
 			mode=2
-			if self.psr.nharm:
+			if 'nharm' in self.psr.paras:
 				nharm=self.nharm
 			if self.psr.stig: print("Warning: Both H4 and STIG in par file, then ignoring STIG")
 			si=2*h3*h4/(h3**2+h4**2)
 			m2=h3**4/h4**3
 		else:
-			if self.psr.stig:
+			if 'stig' in self.psr.paras:
 				stig=self.psr.stig
 				mode=1
 				si=2*stig/(1+stig**2)
@@ -778,12 +859,13 @@ class psr_timing:
 		phase=2*np.pi*(orbits%1)
 		brace=1-si*np.sin(phase)
 		dlogbr=np.log(brace)
-		trueanom=phase
-		fs=1.0+stig**2-2*stig*np.sin(trueanom)
-		lgf=np.log(fs)
-		lsc=lgf+2.0*stig*np.sin(trueanom)-stig**2*np.cos(2*trueanom)
+		trueanom=phase*1.0
 		if mode==0: ds=-4/3*h3*np.sin(trueanom)
-		elif mode==1: ds=-2*m2*lsc
+		elif mode==1:
+			fs=1.0+stig**2-2*stig*np.sin(trueanom)
+			lgf=np.log(fs)
+			lsc=lgf+2.0*stig*np.sin(trueanom)-stig**2*np.cos(2*trueanom)
+			ds=-2*m2*lsc
 		else: ds=calcdh(trueanom,h3,h4,nharm,0)
 		dre=x0*(np.sin(phase)-0.5*(e1*np.cos(2*phase)-e2*np.sin(2*phase)))
 		da=a0*np.sin(phase)+b0*np.cos(phase) # abbretion is zero in ell1 model
@@ -795,7 +877,7 @@ class psr_timing:
 		return torb
 	#
 	def ELL1kmodel(self):
-		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4
+		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
 		a0,b0=0.0,0.0
 		pbdot=self.psr.pbdot
 		omdot=self.psr.omdot*np.pi/(180*365.25*86400)
@@ -804,7 +886,7 @@ class psr_timing:
 		an=2*np.pi/pb-omdot
 		si=self.psr.sini
 		t0asc=self.psr.tasc
-		tt0=(self.bbat.mjd-t0asc)*86400
+		tt0=self.bbat.minus(t0asc).mjd*86400
 		if si>1.0: 
 			si=1.0
 			self.psr.sini=1.0
@@ -833,7 +915,7 @@ class psr_timing:
 		return torb
 	#
 	def DDmodel(self):
-		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4
+		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
 		dr,dth=0.0,0.0
 		si=self.psr.sini
 		if si>1.0: 
@@ -843,7 +925,7 @@ class psr_timing:
 		pb=self.psr.pb*86400
 		an=2*np.pi/pb
 		k=self.psr.omdot*np.pi/(180*365.25*86400)/an
-		tt0=(self.bbat.mjd-self.psr.t0)*86400
+		tt0=self.bbat.minus(self.psr.t0).mjd*86400
 		gamma=self.psr.gamma
 		a0,b0=0,0
 		omz=self.psr.om
@@ -856,9 +938,9 @@ class psr_timing:
 		er,eth=ecc*(1+dr),ecc*(1+dth)
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
 		phase=2*np.pi*(orbits%1)
-		u=phase
+		u=phase*1.0
 		du=1
-		while np.abs(dep>1e-12):
+		while np.min(np.abs(du))>1e-12:
 			du=(phase-(u-ecc*np.sin(u)))/(1-ecc*np.cos(u))
 			u+=du
 		su,cu=np.sin(u),np.cos(u)
@@ -866,7 +948,7 @@ class psr_timing:
 		cae=(cu-ecc)/onemecu
 		sae=np.sqrt(1-ecc**2)*su/onemecu
 		ae=np.arctan2(sae,cae)
-		if ae<0.0: ae+=2*np.pi
+		ae[ae<0.0]+=2*np.pi
 		ae=2*np.pi*orbits+ae-phase
 		omega=omz*np.pi/180+k*ae
 		sw,cw=np.sin(omega),np.cos(omega)
@@ -888,11 +970,11 @@ class psr_timing:
 		return torb
 	#
 	def DDHmodel(self):
-		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4
+		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
 		dr,dth=0.0,0.0
 		h3=self.psr.h3
 		stig=self.psr.stig
-		si=2*stig/(1+stig)**2
+		si=2*stig/(1+stig**2)
 		m2=h3/stig**3
 		if si>1.0: 
 			si=1.0
@@ -900,7 +982,7 @@ class psr_timing:
 		pb=self.psr.pb*86400
 		an=2*np.pi/pb
 		k=self.psr.omdot*np.pi/(180*365.25*86400)/an
-		tt0=(self.bbat.mjd-self.psr.t0)*86400
+		tt0=self.bbat.minus(self.psr.t0).mjd*86400
 		gamma=self.psr.gamma
 		a0,b0=0,0
 		omz=self.psr.om
@@ -913,9 +995,9 @@ class psr_timing:
 		er,eth=ecc*(1+dr),ecc*(1+dth)
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
 		phase=2*np.pi*(orbits%1)
-		u=phase
+		u=phase*1.0
 		du=1
-		while np.abs(dep>1e-12):
+		while np.min(np.abs(du))>1e-12:
 			du=(phase-(u-ecc*np.sin(u)))/(1-ecc*np.cos(u))
 			u+=du
 		su,cu=np.sin(u),np.cos(u)
@@ -923,7 +1005,7 @@ class psr_timing:
 		cae=(cu-ecc)/onemecu
 		sae=np.sqrt(1-ecc**2)*su/onemecu
 		ae=np.arctan2(sae,cae)
-		if ae<0.0: ae+=2*np.pi
+		ae[ae<0]+=2*np.pi
 		ae=2*np.pi*orbits+ae-phase
 		omega=omz*np.pi/180+k*ae
 		sw,cw=np.sin(omega),np.cos(omega)
@@ -945,27 +1027,29 @@ class psr_timing:
 		return torb
 	#
 	def DDKmodel(self):
-		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4
+		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
 		dr,dth=0.0,0.0
 		kom=self.psr.kom*np.pi/180
 		sin_omega,cos_omega=np.sin(kom),np.cos(kom)
 		kin=self.psr.kin*np.pi/180
-		si,ci=np.sin(kin),np.cos(cin)
-		pmra=self.psr.pmra/(180.0*3600.0e3)/(365.25*86400.0)
-		pmdec=self.psr.pmdec/(180.0*3600.0e3)/(365.25*86400.0)
+		si,ci=np.sin(kin),np.cos(kin)
+		pmra=self.psr.pmra*np.pi/(180.0*3600.0e3)/(365.25*86400.0)
+		pmdec=self.psr.pmdec*np.pi/(180.0*3600.0e3)/(365.25*86400.0)
 		dpara=self.psr.px*pxconv
-		sin_delta=self.psr_location.z
+		psr_location_equ=self.psr_location.copy()
+		psr_location_equ.ecl2equ()
+		sin_delta=psr_location_equ.z
 		cos_delta=np.cos(np.arcsin(sin_delta))
-		sin_alpha=self.psr_location.y/cos_delta
-		cos_alpha=self.psr_location.x/cos_delta
+		sin_alpha=psr_location_equ.y/cos_delta
+		cos_alpha=psr_location_equ.x/cos_delta
 		m2=self.psr.m2*sunmass
 		pb=self.psr.pb*86400
 		an=2*np.pi/pb
 		k=self.psr.omdot*np.pi/(180*365.25*86400)/an
-		tt0=(self.bbat.mjd-self.psr.t0)*86400
+		tt0=self.bbat.minus(self.psr.t0).mjd*86400
 		gamma=self.psr.gamma
 		a0,b0=0,0
-		omz=self.psr.om
+		omz=self.psr.om*np.pi/180.0
 		xdot=self.psr.a1dot
 		pbdot=self.psr.pbdot
 		edot=self.psr.edot
@@ -974,23 +1058,27 @@ class psr_timing:
 		ecc=self.psr.ecc+edot*tt0
 		er,eth=ecc*(1+dr),ecc*(1+dth)
 		ki_dot=-pmra*sin_omega+pmdec*cos_omega
-		ki+=ki_dot*tt0
+		ki=kin+ki_dot*tt0
 		sini,cosi=np.sin(ki),np.cos(ki)
 		tani=sini/cosi
-		asi+=(asi*kidot/tani)*tt0
-		omz+=(pmra*cos_omega+pmdec*sin_omega)/sini*tt0
-		delta_i0=self.time.pos[2].multi(te.vec(-sin_alpha,cos_alpha,np.zeros_like(sin_alpha),center='bary',scale='tdb',coord='ecl',unit=sl,type0='pos'))/aultsc
-		delta_j0=self.time.pos[2].multi(te.vec(-sin_delta*cos_alpha,-sin_delta*cos_alpha,cos_alpha,center='bary',scale='tdb',coord='ecl',unit=sl,type0='pos'))/aultsc
+		if 'kom' in self.paras:
+			asi+=(asi*ki_dot/tani)*tt0
+			omz+=(pmra*cos_omega+pmdec*sin_omega)/sini*tt0
+		earth_pos=self.time.pos[2].copy()
+		earth_pos.ecl2equ()
+		delta_i0=earth_pos.dot(te.vector(-sin_alpha,cos_alpha,np.zeros_like(sin_alpha),center='bary',scale='si',coord='equ',unit=te.sl,type0='pos'))/aultsc
+		delta_j0=earth_pos.dot(te.vector(-sin_delta*cos_alpha,-sin_delta*sin_alpha,cos_delta,center='bary',scale='si',coord='equ',unit=te.sl,type0='pos'))/aultsc
 		xpr=delta_i0*sin_omega-delta_j0*cos_omega
 		ypr=delta_i0*cos_omega+delta_j0*sin_omega
-		asi+=asi/tani*dpara*xpr
-		si+=ci*dpara*xpr
-		omz-=1.0/si*dpara*ypr
+		if 'kom' in self.paras:
+			asi+=asi/tani*dpara*xpr
+			si+=ci*dpara*xpr
+			omz-=1.0/si*dpara*ypr
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
 		phase=2*np.pi*(orbits%1)
-		u=phase
+		u=phase*1.0
 		du=1
-		while np.abs(dep>1e-12):
+		while np.min(np.abs(du))>1e-12:
 			du=(phase-(u-ecc*np.sin(u)))/(1-ecc*np.cos(u))
 			u+=du
 		su,cu=np.sin(u),np.cos(u)
@@ -998,9 +1086,9 @@ class psr_timing:
 		cae=(cu-ecc)/onemecu
 		sae=np.sqrt(1-ecc**2)*su/onemecu
 		ae=np.arctan2(sae,cae)
-		if ae<0.0: ae+=2*np.pi
+		ae[ae<0.0]+=2*np.pi
 		ae=2*np.pi*orbits+ae-phase
-		omega=omz*np.pi/180+k*ae
+		omega=omz+k*ae
 		sw,cw=np.sin(omega),np.cos(omega)
 		alpha=asi*sw
 		beta=asi*np.sqrt(1-eth**2)*cw
@@ -1020,14 +1108,14 @@ class psr_timing:
 		return torb
 	#
 	def DDSmodel(self):
-		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4
+		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
 		dr,dth=0.0,0.0
 		shapmax=self.psr.shapmax
 		m2=self.psr.m2*sunmass
 		pb=self.psr.pb*86400
 		an=2*np.pi/pb
 		k=self.psr.omdot*np.pi/(180*365.25*86400)/an
-		tt0=(self.bbat.mjd-self.psr.t0)*86400
+		tt0=self.bbat.minus(self.psr.t0).mjd*86400
 		gamma=self.psr.gamma
 		a0,b0=0,0
 		omz=self.psr.om
@@ -1040,9 +1128,9 @@ class psr_timing:
 		er,eth=ecc*(1+dr),ecc*(1+dth)
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
 		phase=2*np.pi*(orbits%1)
-		u=phase
+		u=phase*1.0
 		du=1
-		while np.abs(dep>1e-12):
+		while np.min(np.abs(du))>1e-12:
 			du=(phase-(u-ecc*np.sin(u)))/(1-ecc*np.cos(u))
 			u+=du
 		su,cu=np.sin(u),np.cos(u)
@@ -1050,7 +1138,7 @@ class psr_timing:
 		cae=(cu-ecc)/onemecu
 		sae=np.sqrt(1-ecc**2)*su/onemecu
 		ae=np.arctan2(sae,cae)
-		if ae<0.0: ae+=2*np.pi
+		ae[ae<0.0]+=2*np.pi
 		ae=2*np.pi*orbits+ae-phase
 		omega=omz*np.pi/180+k*ae
 		sw,cw=np.sin(omega),np.cos(omega)
@@ -1063,7 +1151,7 @@ class psr_timing:
 		anhat=an/onemecu
 		sqr1me2=np.sqrt(1-ecc**2)
 		cume=cu-ecc
-		sdds=1-exp(-shapmax)
+		sdds=1-np.exp(-shapmax)
 		brace=onemecu-sdds*(sw*cume+sqr1me2*cw*su)
 		dlogbr=np.log(brace)
 		ds=-2*m2*dlogbr
@@ -1073,15 +1161,20 @@ class psr_timing:
 		return torb
 	#
 	def DDGRmodel(self):
-		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4
-		tt0=(self.bbat.mjd-self.psr.t0)*86400
+		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
+		tt0=self.bbat.minus(self.psr.t0).mjd*86400
 		f0=self.psr.f0
 		xomdot=0
 		afac=0
 		si=self.psr.sini
 		m=self.psr.mtot*sunmass
 		m2=self.psr.m2*sunmass
-		m1=m-m2
+		if m==0:
+			m1=1.4*sunmass
+			m=m1+m2
+			print("Strong Warning: The mass of the pulsar is not given in parfile, use 1.4 times of solarmass in calculation.")
+		else:
+			m1=m-m2
 		pb=self.psr.pb*86400
 		an=2*np.pi/pb
 		omz=self.psr.om
@@ -1107,9 +1200,9 @@ class psr_timing:
 		er,eth=ecc*(1+dr),ecc*(1+dth)
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
 		phase=2*np.pi*(orbits%1)
-		u=phase
+		u=phase*1.0
 		du=1
-		while np.abs(dep>1e-14):
+		while np.min(np.abs(du))>1e-14:
 			du=(phase-(u-ecc*np.sin(u)))/(1-ecc*np.cos(u))
 			u+=du
 		su,cu=np.sin(u),np.cos(u)
@@ -1117,7 +1210,7 @@ class psr_timing:
 		cae=(cu-ecc)/onemecu
 		sae=np.sqrt(1-ecc**2)*su/onemecu
 		ae=np.arctan2(sae,cae)
-		if ae<0.0: ae+=2*np.pi
+		ae[ae<0.0]+=2*np.pi
 		ae=2*np.pi*orbits+ae-phase
 		omega=omz*np.pi/180+(k+xomdot/(an*np.pi/180*365.25*86400))*ae
 		sw,cw=np.sin(omega),np.cos(omega)
@@ -1133,7 +1226,7 @@ class psr_timing:
 		brace=onemecu-si*(sw*cume+sqr1me2*cw*su)
 		dlogbr=np.log(brace)
 		ds=-2*m2*dlogbr
-		a0aligned=an*ar/(2*np.pi*f0*si*sqrime2)
+		a0aligned=an*ar/(2*np.pi*f0*si*sqr1me2)
 		a0=afac*a0aligned
 		b0=0.0
 		da=a0*(np.sin(omega+ae)+ecc*sw)+b0*(np.cos(omega+ae)+ecc*cw)
@@ -1142,8 +1235,8 @@ class psr_timing:
 		return torb
 	#
 	def MSSmodel(self):
-		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4
-		tt0=(self.bbat.mjd-self.psr.t0)*86400
+		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
+		tt0=self.bbat.minus(self.psr.t0).mjd*86400
 		m2=self.psr.m2*sunmass
 		pbdot=self.psr.pbdot
 		xdot=self.psr.a1dot
@@ -1163,18 +1256,18 @@ class psr_timing:
 		pb=self.psr.pb*86400
 		ecc0=self.psr.ecc
 		x0=self.psr.a1
-		omega=self.psr.omega
+		omega=self.psr.om
 		an=2*np.pi/pb
 		omega0=omega/180*np.pi
 		k=omdot/an/(180/np.pi*365.25*86400)
 		xi=xdot/an
-		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
+		orbits=tt0/pb-0.5*pbdot*(tt0/pb)**2
 		phase=2*np.pi*(orbits%1)
 		ecc=ecc0+edot*tt0+0.5*e2dot*tt0**2
 		er,eth=ecc*(1+dr),ecc*(1+dth)
-		u=phase
+		u=phase*1.0
 		du=1
-		while np.abs(dep>1e-14):
+		while np.min(np.abs(du))>1e-14:
 			du=(phase-(u-ecc*np.sin(u)))/(1-ecc*np.cos(u))
 			u+=du
 		su,cu=np.sin(u),np.cos(u)
@@ -1182,7 +1275,7 @@ class psr_timing:
 		cae=(cu-ecc)/onemecu
 		sae=np.sqrt(1-ecc**2)*su/onemecu
 		ae=np.arctan2(sae,cae)
-		if ae<0.0: ae+=2*np.pi
+		ae[ae<0.0]+=2*np.pi
 		ae=2*np.pi*orbits+ae-phase
 		xii=1e-20*x2dot/an**2
 		oii=1e-20*om2dot/an**2
@@ -1201,20 +1294,20 @@ class psr_timing:
 		brace=onemecu-si*(sw*cume+sqr1me2*cw*su)
 		dlogbr=np.log(brace)
 		ds=-2*m2*dlogbr
-		a0aligned=an*ar/(2*np.pi*f0*si*sqrime2)
-		a0=afac*a0aligned
-		b0=0.0
+		a0=self.psr.a0
+		b0=self.psr.b0
 		da=a0*(np.sin(omega+ae)+ecc*sw)+b0*(np.cos(omega+ae)+ecc*cw)
 		d2bar=dre*(1-anhat*drep+anhat**2*(drep**2+0.5*dre*drepp-0.5*ecc*su*dre*drep/onemecu))+ds+da
 		torb=-d2bar
 		shapparam=-np.log(1-ecc*cu-(np.sin(omega)*(cu-ecc)+np.sqrt(1-ecc**2)*np.cos(omega)*su)*si)
 		torb-=shapmax*shapparam
-		cpx=1e2*te.sl*x**2/2*(1/si**2-0.5+0.5*ecc**2*(1+sw**2-3/si**2)-2*ecc*(1/si**2-sw**2)*cume+sqr1me2*np.sin(2*omega)*(ecc*su-0.5*np.sin(2*u))+0.5*(np.cos(2*omega)+ecc**2*(1./si**2+co**2))*np.cos(2*u))
+		if si==0: cpx=0
+		else: cpx=1e2*te.sl*x**2/2*(1/si**2-0.5+0.5*ecc**2*(1+sw**2-3/si**2)-2*ecc*(1/si**2-sw**2)*cume+sqr1me2*np.sin(2*omega)*(ecc*su-0.5*np.sin(2*u))+0.5*(np.cos(2*omega)+ecc**2*(1./si**2+cw**2))*np.cos(2*u))
 		torb-=cpx*orbpx
 		return torb
 	#
 	def T2model(self):
-		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4
+		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
 		pb=self.psr.pb*86400
 		t0=self.psr.t0
 		ecc=self.psr.ecc
@@ -1228,12 +1321,12 @@ class psr_timing:
 		ki=self.psr.kin*np.pi/180
 		torb=0.0
 		for i in np.arange(self.psr.bpjep.size):
-			if self.bbat>self.psr.bpjep[i]:
-				torb-=self.psr.bpjph[i]/self.psr.f0
-				x+=self.psr.bpja1[i]
-				ecc+=self.psr.bpjec[i]
-				omz+=self.psr.bpjom[i]
-				pb+=self.psr.bpjpb[i]
+			jj=(self.bbat.mjd>self.psr.bpjep[i])
+			torb[jj]-=self.psr.bpjph[i]/self.psr.f0
+			x[jj]+=self.psr.bpja1[i]
+			ecc[jj]+=self.psr.bpjec[i]
+			omz[jj]+=self.psr.bpjom[i]
+			pb[jj]+=self.psr.bpjpb[i]
 		an=2*np.pi/pb
 		sin_omega=np.sin(kom)
 		cos_omega=np.cos(kom)
@@ -1265,7 +1358,10 @@ class psr_timing:
 		eps1dot=self.psr.eps1dot
 		eps2dot=self.psr.eps2dot
 		daop=self.psr.daop*1e-3/pxconv
+		ddaop,ddsr,ddop=0.0,0.0,0.0
 		m1=mtot-m2
+		er=ecc*(1+dr)
+		eth=ecc*(1+dth)
 		if mtot:
 			arr0=(mtot/an**2)**(1/3)
 			arr,arrold=arr0,0
@@ -1287,23 +1383,22 @@ class psr_timing:
 			b0=0.0
 			omdot=xomdot+xk
 		if t0:
-			tt0=(self.time.bbat.mjd-t0)*86400
+			tt0=self.bbat.minus(t0).mjd*86400
 		elif t0asc:
-			tt0=(self.time.bbat.mjd-t0asc)*86400
+			tt0=self.bbat.minus(t0asc).mjd*86400
 		else:
 			raise Exception('No T0 or T0ASC in pulsar paras.')
 		ecc+=edot*tt0
 		x+=xdot*tt0
 		eps1+=eps1dot*tt0
 		eps2+=eps2dot*tt0
-		if ecc<0 or ecc>=1:
-			ecc=0.0
+		ecc[(ecc<0)|(ecc>=1)]=0.0
 		orbits  = tt0/pb - 0.5*(pbdot+xpbdot)*(tt0/pb)**2 - 1./6.*pb2dot*(tt0/pb)**3
 		phase=2*np.pi*(orbits%1)
-		if self.psr.ecc:
-			u=phase
+		if 'ecc' in self.psr.paras:
+			u=phase*1.0
 			du=1
-			while np.abs(dep>1e-14):
+			while np.min(np.abs(du))>1e-14:
 				du=(phase-(u-ecc*np.sin(u)))/(1-ecc*np.cos(u))
 				u+=du
 			su,cu=np.sin(u),np.cos(u)
@@ -1311,21 +1406,25 @@ class psr_timing:
 			cae=(cu-ecc)/onemecu
 			sae=np.sqrt(1-ecc**2)*su/onemecu
 			ae=np.arctan2(sae,cae)
-			if ae<0.0: ae+=2*np.pi
+			ae[ae<0.0]+=2*np.pi
 			ae=2*np.pi*orbits+ae-phase
 			omega=omz*np.pi/180+omdot*ae
 			sw,cw=np.sin(omega),np.cos(omega)
 			sqr1me2=np.sqrt(1-ecc**2)
 			cume=cu-ecc
-			if self.psr.kin and self.psr.kom and self.psr.pmra:
+			if ('kin' in self.psr.paras) and ('kom' in self.psr.paras) and ('pmra' in self.psr.paras):
 				sini,cosi=np.sin(ki),np.cos(ki)
 				tani=sini/cosi
-				sin_delta=self.psr_location.z
+				psr_location_equ=self.psr_location.copy()
+				psr_location_equ.ecl2equ()
+				sin_delta=psr_location_equ.z
 				cos_delta=np.cos(np.arcsin(sin_delta))
-				sin_alpha=self.psr_location.y/cos_delta
-				cos_alpha=self.psr_location.x/cos_delta
-				delta_i0=self.time.pos[2].multi(te.vec(-sin_alpha,cos_alpha,np.zeros_like(sin_alpha),center='bary',scale='tdb',coord='ecl',unit=sl,type0='pos'))/aultsc
-				delta_j0=self.time.pos[2].multi(te.vec(-sin_delta*cos_alpha,-sin_delta*cos_alpha,cos_alpha,center='bary',scale='tdb',coord='ecl',unit=sl,type0='pos'))/aultsc
+				sin_alpha=psr_location_equ.y/cos_delta
+				cos_alpha=psr_location_equ.x/cos_delta
+				earth_pos=self.time.pos[2].copy()
+				earth_pos.ecl2equ()
+				delta_i0=earth_pos.dot(te.vector(-sin_alpha,cos_alpha,np.zeros_like(sin_alpha),center='bary',scale='si',coord='equ',unit=te.sl,type0='pos'))/aultsc
+				delta_j0=earth_pos.dot(te.vector(-sin_delta*cos_alpha,-sin_delta*sin_alpha,cos_delta,center='bary',scale='si',coord='equ',unit=te.sl,type0='pos'))/aultsc
 				if daop: tmp=1/daop
 				else: tmp=dpara
 				dk011=-x*tmp/sini*delta_i0*sin_omega
@@ -1345,7 +1444,7 @@ class psr_timing:
 				sdds=1-exp(-shapmax)
 				brace=onemecu-sdds*(sw*cume+sqr1me2*cw*su)
 			else: brace=onemecu-si*(sw*cume+sqr1me2*cw*su)
-			da=a0*(sin(omega+ae) + ecc*sw) + b0*(cos(omega+ae) + ecc*cw)
+			da=a0*(np.sin(omega+ae) + ecc*sw) + b0*(np.cos(omega+ae) + ecc*cw)
 			alpha=x*sw
 			beta=x*np.sqrt(1-eth**2)*cw
 			bg=beta+gamma
@@ -1355,19 +1454,23 @@ class psr_timing:
 			anhat=an/onemecu
 			dlogbr=np.log(brace)
 			ds=-2*m2*dlogbr
-		elif self.psr.eps1:
+		elif 'eps1' in self.psr.paras:
 			dre  = x*(np.sin(phase)-0.5*(eps1*np.cos(2.0*phase)-eps2*np.sin(2.0*phase)))
 			drep = x*np.cos(phase)
 			drepp=-x*np.sin(phase)
-			if self.psr.kin and self.psr.kom and self.psr.pmra:
+			if ('kin' in self.psr.paras) and ('kom' in self.psr.paras) and ('pmra' in self.psr.paras):
 				sini,cosi=np.sin(ki),np.cos(ki)
 				tani=sini/cosi
-				sin_delta=self.psr_location.z
+				psr_location_equ=self.psr_location.copy()
+				psr_location_equ.ecl2equ()
+				sin_delta=psr_location_equ.z
 				cos_delta=np.cos(np.arcsin(sin_delta))
-				sin_alpha=self.psr_location.y/cos_delta
-				cos_alpha=self.psr_location.x/cos_delta
-				delta_i0=self.time.pos[2].multi(te.vec(-sin_alpha,cos_alpha,np.zeros_like(sin_alpha),center='bary',scale='tdb',coord='ecl',unit=sl,type0='pos'))/aultsc
-				delta_j0=self.time.pos[2].multi(te.vec(-sin_delta*cos_alpha,-sin_delta*cos_alpha,cos_alpha,center='bary',scale='tdb',coord='ecl',unit=sl,type0='pos'))/aultsc
+				sin_alpha=psr_location_equ.y/cos_delta
+				cos_alpha=psr_location_equ.x/cos_delta
+				earth_pos=self.time.pos[2].copy()
+				earth_pos.ecl2equ()
+				delta_i0=earth_pos.dot(te.vector(-sin_alpha,cos_alpha,np.zeros_like(sin_alpha),center='bary',scale='si',coord='equ',unit=te.sl,type0='pos'))/aultsc
+				delta_j0=earth_pos.dot(te.vector(-sin_delta*cos_alpha,-sin_delta*sin_alpha,cos_delta,center='bary',scale='si',coord='equ',unit=te.sl,type0='pos'))/aultsc
 				if daop: tmp=1/daop
 				else: tmp=dpara
 				dk011=-x*tmp/sini*delta_i0*sin_omega
@@ -1387,18 +1490,18 @@ class psr_timing:
 			da=a0*np.sin(phase)+b0*np.cos(phase)
 			anhat=an
 			ecc=0.0
-			if self.psr.h3 and (self.psr.h4 or self.psr.stig):
+			if ('h3' in self.psr.paras) and (('h4' in self.psr.paras) or ('stig' in self.psr.paras)):
 				h3=self.psr.h3
 				if self.psr.h4:
 					h4=self.psr.h4
 					mode=2
-					if self.psr.nharm:
+					if 'nharm' in self.psr.paras:
 						nharm=self.nharm
 					if self.psr.stig: print("Warning: Both H4 and STIG in par file, then ignoring STIG")
 					si=2*h3*h4/(h3**2+h4**2)
 					m2=h3**4/h4**3
 				else:
-					if self.psr.stig:
+					if 'stig' in self.psr.paras:
 						stig=self.psr.stig
 						mode=1
 						si=2*stig/(1+stig**2)
@@ -1408,7 +1511,7 @@ class psr_timing:
 				if si>1.0: si=1.0
 				brace=1-si*np.sin(phase)
 				dlogbr=np.log(brace)
-				trueanom=phase
+				trueanom=phase*1.0
 				ecc=np.sqrt(eps1**2+eps2**2)
 				omega=np.arctan2(eps1,eps2)
 				fs=1.0+stig**2-2*stig*np.sin(trueanom)
@@ -1421,17 +1524,26 @@ class psr_timing:
 				dlogbr=np.log(brace)
 				ds=-2*m2*dlogbr
 		else:
-			raise Exception('Both DD or ELL1 model cannot be used.')
-		if onemecu:
-			d2bar=dre*(1-anhat*drep+anhat**2*(drep**2+0.5*dre*drepp-0.5*ecc*su*dre*drep/onemecu))+ds+da+ddaop+ddsr+ddop
-		else:
-			d2bar=dre*(1-anhat*drep+anhat**2*(drep**2+0.5*dre*drepp))+ds+da+ddaop+ddsr+ddop
+			raise Exception('Either DD or ELL1 model cannot be used.')
+		d2bar=dre*(1-anhat*drep+anhat**2*(drep**2+0.5*dre*drepp-0.5*ecc*su*dre*drep/onemecu))+ds+da+ddaop+ddsr+ddop
 		torb-=d2bar
 		return torb
 	#
 	def T2_PTAmodel(self):
 		return 0
-
+#
+def calculate_gw(ra1,dec1,ra2,dec2):
+	lambda_p,beta_p,lamb,beta=ra1,dec1,ra2,dec2
+	clp,slp,cbp,sbp,cl,sl,cb,sb=np.cos(lambda_p),np.sin(lambda_p),np.cos(beta_p),np.sin(beta_p),np.cos(lamb),np.sin(lamb),np.cos(beta),np.sin(beta)
+	vn=np.array([[clp*cbp,slp*cbp,sbp]])
+	costheta=cb*cbp*np.cos(lamb-lambda_p)+sb*sbp
+	e11p,e21p,e31p,e22p,e32p,e33p=sl**2-cl**2*sb**2,-sl*cl*(sb**2+1),cl*sb*cb,cl**2-sl**2*sb**2,sl*sb*cb,-cb**2
+	mep=np.array([[e11p,e12p,e13p],[e12p,e22p,e23p],[e13p,e23p,e33p]])
+	resp=vn@mep@vn.T
+	e11c,e21c,e31c,e22c,e32c,e33c=2*sl*cl*sb,-(cl**2-sl**2)*sb,-sl*cb,-2*sl*cl*sb,cl*cb,0
+	mec=np.array([[e11c,e12c,e13c],[e12c,e22c,e23c],[e13c,e23c,e33c]])
+	resc=vn@mec@vn.T
+	return resp,resc,costheta
 #
 def calcdh(ae,h3,h4,nharm,sel):
 	s=h4/h3
@@ -1464,27 +1576,5 @@ def calcdh(ae,h3,h4,nharm,sel):
 		return firsth4+secondh4
 	elif sel==0:
 		return sd3+sd4+sd5
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

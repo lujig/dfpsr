@@ -9,18 +9,22 @@ mm.mp.dps=30
 import astropy.io.fits as ps
 from multiprocessing import Pool
 import gc
+import psr_read as pr
+import time_eph as te
+import psr_model as pm
+import subprocess as sp
 #
 version='JigLu_20200925'
 #
 parser=ap.ArgumentParser(prog='dfpsr',description='Dedisperse and Fold the psrfits data.',epilog='Ver '+version)
 parser.add_argument('-v','--version', action='version', version=version)
-parser.add_argument('--verbose', action="store_true",default=False,help=" detailed information")
+parser.add_argument('--verbose', action="store_true",default=False,help="print detailed information")
 parser.add_argument("filename",nargs='+',help="name of file or filelist")
 parser.add_argument("-a","--cal",dest="cal",nargs='+',help="name of calibration file or calibration filelist")
 parser.add_argument("--cal_period",dest="cal_period",default=0,type=np.float64,help="period of the calibration fits file (s)")
 parser.add_argument("-o","--output",dest="output",default="psr",help="output file name")
 parser.add_argument("-f","--frequency",dest='freqrange',default=0,help="output frequency range (MHz) in form start_freq,end_freq")
-parser.add_argument('-d','--dm',dest='dm',default=-2e300,type=np.float64,help="dispersion measure")
+parser.add_argument('-d','--dm',dest='dm',default=0,type=np.float64,help="dispersion measure")
 parser.add_argument('-p','--period',dest='period',default=0,type=np.float64,help="pulsar period (s)")
 parser.add_argument('-n','--pulsar_name',default=0,dest='psr_name',help='input pulsar name')
 parser.add_argument('-e','--pulsar_ephemeris',default=0,dest='par_file',help='input pulsar parameter file')
@@ -172,19 +176,17 @@ elif args.psr_name or args.par_file:
 	elif args.psr_name:
 		command.append('-n '+args.psr_name)
 		psr_name=args.psr_name
-		os.system('psrcat -e '+psr_name+' > psr.par')
-		par_file=open('psr.par','r')
-		psr_par=par_file.readlines()
-		par_file.close()
+		psr=pr.psr(psr_name)
+		psr_par=sp.getoutput('psrcat -e '+psr_name).split('\n')
 		if len(psr_par)<3:
 			parser.error('A valid pulsar name is required.')
-		par_file='psr.par'
+		for i in range(len(psr_par)): psr_par[i]=psr_par[i]+'\n'
 	else:
 		command.append('-e')
 		par_file=open(args.par_file,'r')
 		psr_par=par_file.readlines()
 		par_file.close()
-		par_file=args.par_file
+		psr=pr.psr(par_file,parfile=True)
 	info['psr_par']=psr_par
 	pepoch=False
 	for line in psr_par:
@@ -195,16 +197,16 @@ elif args.psr_name or args.par_file:
 		elif elements[0]=='F0':
 			period=1./np.float64(elements[1])
 		elif elements[0]=='DM':
-			if not args.dm>-1e300:
+			if not args.dm:
 				dm=np.float64(elements[1])
 			else:
 				dm=args.dm
 		elif elements[0]=='PEPOCH':
 			pepoch=True
 else:
-	if not (args.dm>-1e300 or args.period):
+	if not (args.dm or args.period):
 		parser.error('Pulsar Parameter should be provided.')
-	if not (args.dm>-1e300 and args.period):
+	if not (args.dm and args.period):
 		parser.error('Both DM and period should be provided.')
 	period=args.period
 	dm=args.dm
@@ -345,58 +347,38 @@ if args.period or (not pepoch):
 	stt_date=time0[-1]+stt_sec//86400
 	stt_sec=stt_sec%86400
 else:
-	os.popen('tempo2 -f '+par_file+' -pred \"'+telename+' '+stt_time+' '+end_time+' '+str(freq_start)+' '+str(freq_end)+' '+str(args.ncoeff)+' 2 '+str(int(tsamp*nbin0)+150)+'\"').close()
-	predictor_file='t2pred.dat'
-	#
-	polyco=open(predictor_file,'r')
-	lines=polyco.readlines()
-	polyco.close()
-	os.remove(predictor_file)
-	os.remove('pred.tim')
-	if not args.par_file:
-		os.remove(par_file)
-	coeff=[]
-	predictor=[]
-	for line in lines:
-		predictor.append(line)
-		elements=line.split()
-		if elements[0]=='TIME_RANGE':
-			t0=mm.mpf(elements[1])
-			t1=mm.mpf(elements[2])
-		elif elements[0]=='FREQ_RANGE':
-			f0=np.float64(elements[1])
-			f1=np.float64(elements[2])
-		elif elements[0]=='DISPERSION_CONSTANT':
-			dispc=np.float64(elements[1])
-		elif elements[0]=='COEFFS':
-			coeff.append(list(map(mm.mpf,elements[1:])))
-		elif line=="ChebyModel END\n" or line=="ChebyModel END":
-			break
-	info['predictor']=predictor[1:]
-	coeff=np.array(coeff)
-	coeff[0,:]/=2.0
-	coeff[:,0]/=2.0
-	tmp=int(coeff[0,0])
-	coeff[0,0]-=tmp
-	coeff=np.float64(coeff)
-	time0=file_time[0]
-	t0=np.float64(t0-time0[-1])*86400.0
-	t1=np.float64(t1-time0[-1])*86400.0
-	dt=(np.array([0,nbin0])*tsamp+time0[:-1].sum()-delay-t0)/(t1-t0)*2-1
-	coeff1=coeff.sum(1)
-	phase=nc.chebval(dt,coeff1)+dispc/freq_end**2
-	phase0=np.ceil(phase[0])
-	nperiod=int(np.floor(phase[-1]-phase0+dispc/freq_start**2-dispc/freq_end**2))
-	coeff[0,0]-=phase0
-	roots=nc.chebroots(coeff1)
+	chebx_test=nc.chebpts1(args.ncoeff)
+	second_test=(chebx_test+1)/2*nbin0*tsamp+file_time[0][:-1].sum()-delay
+	time_test=te.time(file_time[0][-1]*np.ones(args.ncoeff),second_test,scale='local')
+	times_test=te.times(time_test)
+	timing_test_end=pm.psr_timing(psr,times_test,freq_end)
+	timing_test_start=pm.psr_timing(psr,times_test,freq_start)
+	phase_start=timing_test_end.phase.date[0]+1
+	phase_end=timing_test_start.phase.date[-1]
+	phase=timing_test_end.phase.date-phase_start+timing_test_end.phase.second
+	nperiod=phase_end-phase_start
+	period=timing_test_end.phase.date[-1]-timing_test_end.phase.date[0]+timing_test_end.phase.second[-1]-timing_test_end.phase.second[-1]
+	cheb_end=nc.chebfit(chebx_test,timing_test_end.phase.date-phase_start,args.ncoeff-1)
+	roots=nc.chebroots(cheb_end)
 	roots=np.real(roots[np.isreal(roots)])
-	root=roots[np.argmin(np.abs(roots-dt[0]))]
-	period=1./np.polyval(np.polyder(nc.cheb2poly(coeff1)[::-1]),root)/2.0*(t1-t0)
-	stt_sec=(root+1)/2.0*(t1-t0)+t0
-	stt_date=time0[-1]+stt_sec//86400
-	stt_sec=stt_sec%86400
-	info['phase0']=int(phase0)+tmp
-	phase-=phase0
+	root=roots[np.argmin(np.abs(roots+1))]
+	stt_time_test=te.time(file_time[0][-1],(root+1)/2*nbin0*tsamp+file_time[0][:-1].sum()-delay,scale='local')
+	stt_sec=stt_time_test.second
+	stt_date=stt_time_test.date
+	info['phase0']=phase_start
+	ncoeff_freq=10
+	phase_tmp=np.zeros([ncoeff_freq,args.ncoeff])
+	disp_tmp=np.zeros(ncoeff_freq)
+	cheby=nc.chebpts1(ncoeff_freq)
+	freqy=(cheby+1)/2*bandwidth+freq_start
+	for i in np.arange(ncoeff_freq):
+		timing_test=pm.psr_timing(psr,times_test,freqy[i])
+		disp_tmp[i]=((timing_test.tdis1+timing_test.tdis2)/timing_test.period_now).mean()
+		phase_tmp[i]=timing_test.phase.date-phase_start+timing_test.phase.second+disp_tmp[i]
+	coeff_freq=np.polyfit(1/freqy,disp_tmp,4)
+	coeff=nc.chebfit(chebx_test,nc.chebfit(cheby,phase_tmp,1).T,args.ncoeff-1)
+	info['predictor']=coeff
+	info['predictor_freq']=coeff_freq
 #
 info['stt_sec']=stt_sec
 info['stt_date']=stt_date
@@ -421,8 +403,7 @@ info['length']=period*nperiod
 totalbin=nperiod*nbin*temp_multi
 dphasebin=1./(nbin*temp_multi)
 df=freq_start+np.arange(nchan_new)*channel_width
-if not args.period:
-	df0=(df-f0)/(f1-f0)*2-1
+df0=(df-freq_start)/(freq_end-freq_start)*2-1
 #
 d=ld.ld(name+'.ld')
 if info['mode']=='subint':
@@ -462,9 +443,9 @@ def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 	else:
 		data=data[chanstart:chanend]
 	if args.period:
-		dt=np.arange(nsblk*cums-2,nsblk*cums+nsub+2)*tsamp
+		dt=np.array([np.arange(nsblk*cums-1,nsblk*cums+nsub+1)*tsamp]*nchan_new)
 	else:
-		dt=(np.arange(nsblk*cums-2,nsblk*cums+nsub+2)*tsamp+time0[:-1].sum()-delay-t0)/(t1-t0)*2-1
+		dt=np.arange(nsblk*cums-2,nsblk*cums+nsub+2)/nbin0*2-1
 	for f in np.arange(nchan_new):
 		if f+chanstart in zchan: continue
 		if args.period:
@@ -473,7 +454,7 @@ def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 			else:
 				phase=dt/period
 		else:
-			phase=nc.chebval2d(dt,df0[f]*np.ones_like(dt,dtype=np.float64),coeff)+dispc/df[f]**2
+			phase=nc.chebval2d(dt,df0[f]*np.ones_like(dt,dtype=np.float64),coeff)-np.polyval(coeff_freq,1/df[f])
 		newphase=np.arange(phase[0]//dphasebin+1,phase[-1]//dphasebin+1,dtype=np.int64)
 		if newphase[-1]<0 or newphase[0]>=totalbin:
 			continue
