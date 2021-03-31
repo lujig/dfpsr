@@ -7,7 +7,7 @@ import os,sys,time,ld
 import mpmath as mm
 mm.mp.dps=30
 import astropy.io.fits as ps
-from multiprocessing import Pool
+from multiprocessing import Pool,Manager
 import gc
 import psr_read as pr
 import time_eph as te
@@ -431,7 +431,9 @@ def write_data(ldfile,data,startbin,channum):
 			i,q,u,v=data
 			i,q,u,v=a1p2*i-a1m2*q,a1p2*q-a1m2*i,ncos*u+nsin*v,-nsin*u+ncos*v
 			data=np.array([i,q,u,v])
+	Manager().Lock().acquire()
 	d.__write_chanbins_add__(data.T,startbin,channum)
+	Manager().Lock().release()
 #
 def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 	data=np.concatenate((np.zeros([2,npol,nchan]),data,np.zeros([2,npol,nchan])),axis=0).transpose(2,1,0)
@@ -537,7 +539,9 @@ if args.verbose:
 #
 def dealdata(filelist,n):
 	if args.verbose:
+		Manager().Lock().acquire()
 		sys.stdout.write('Processing the '+str(n+1)+'th fits file...\n')
+		Manager().Lock().release()
 		timemark=time.time()
 	if info['mode']=='subint':
 		tpsub=np.zeros([nchan_new,npol,nbin],dtype=np.float64)
@@ -564,7 +568,9 @@ def dealdata(filelist,n):
 		f.close()
 	gc.collect()
 	if args.verbose:
+		Manager().Lock().acquire()
 		sys.stdout.write('Processing the '+str(n+1)+'th fits file takes '+str(time.time()-timemark)+' second.\n')
+		Manager().Lock().release()
 #
 if args.multi:
 	pool=Pool(processes=args.multi)
