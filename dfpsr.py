@@ -418,7 +418,7 @@ elif info['mode']=='single':
 info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
 d.write_shape([nchan_new,info['nsub'],nbin,npol])
 #
-def write_data(ldfile,data,startbin,channum):
+def write_data(ldfile,data,startbin,channum,lock=0):
 	if args.cal:
 		if pol_type=='AABBCRCI':
 			a12,a22,ncos,nsin=noise_a12[channum],noise_a22[channum],noise_cos[channum],noise_sin[channum]
@@ -431,11 +431,11 @@ def write_data(ldfile,data,startbin,channum):
 			i,q,u,v=data
 			i,q,u,v=a1p2*i-a1m2*q,a1p2*q-a1m2*i,ncos*u+nsin*v,-nsin*u+ncos*v
 			data=np.array([i,q,u,v])
-	Manager().Lock().acquire()
+	if args.multi: lock.acquire()
 	d.__write_chanbins_add__(data.T,startbin,channum)
-	Manager().Lock().release()
+	if args.multi: lock.release()
 #
-def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
+def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True,lock=0):
 	data=np.concatenate((np.zeros([2,npol,nchan]),data,np.zeros([2,npol,nchan])),axis=0).transpose(2,1,0)
 	if args.reverse or (not bw_sign):
 		if nchan==chanend:
@@ -473,7 +473,7 @@ def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 			startphase=newphase[0]
 			nphase=newphase.size
 		if info['mode']=='single':
-			write_data(d,tpdata,startphase,f)
+			write_data(d,tpdata,startphase,f,lock=lock)
 		else:
 			startperiod,phaseres1=divmod(startphase,nbin)
 			phaseres1=np.int64(phaseres1)
@@ -498,7 +498,7 @@ def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 						tpsub[f,:,phaseres1:]+=tpdata[:,:(nbin-phaseres1)]
 						tpdata=tpdata[:,(nbin-phaseres1):].reshape(npol,-1,nbin)
 						file_sub_data[:,0]=tpsub[f]+tpdata.sum(1)
-					write_data(d,file_sub_data.reshape(npol,-1),startsub*nbin,f)
+					write_data(d,file_sub_data.reshape(npol,-1),startsub*nbin,f,lock=lock)
 				else:
 					periodres_left=sub_nperiod-periodres
 					periodres_right=(file_nsub-1)*sub_nperiod-periodres
@@ -515,11 +515,11 @@ def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 						file_sub_data[:,0]+=tpsub[f]
 					else:
 						file_sub_data[:,1]+=tpsub[f]
-					write_data(d,file_sub_data[:,:-1].reshape(npol,-1),startsub*nbin,f)
+					write_data(d,file_sub_data[:,:-1].reshape(npol,-1),startsub*nbin,f,lock=lock)
 					tpsub[f]=file_sub_data[:,-1]
 					tpsubn[f]=startsub+file_nsub-1
 					if args.multi and last:
-						write_data(d,tpsub[f],tpsubn[f]*nbin,f)
+						write_data(d,tpsub[f],tpsubn[f]*nbin,f,lock=lock)
 			else:
 				if file_nperiod>1:
 					phaseres_left=nbin-phaseres1
@@ -531,17 +531,17 @@ def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True):
 				else:
 					tpsub[f,:,phaseres1:(phaseres1+tpdata.shape[1])]+=tpdata
 				if args.multi and last:
-					write_data(d,tpsub[f],startsub*nbin,f)
+					write_data(d,tpsub[f],startsub*nbin,f,lock=lock)
 	return tpsub,tpsubn
 #
 if args.verbose:
 	sys.stdout.write('Dedispersing and folding the data...\n')
 #
-def dealdata(filelist,n):
+def dealdata(filelist,n,lock=0):
 	if args.verbose:
-		Manager().Lock().acquire()
+		if args.multi: lock.acquire()
 		sys.stdout.write('Processing the '+str(n+1)+'th fits file...\n')
-		Manager().Lock().release()
+		if args.multi: lock.release()
 		timemark=time.time()
 	if info['mode']=='subint':
 		tpsub=np.zeros([nchan_new,npol,nbin],dtype=np.float64)
@@ -557,27 +557,28 @@ def dealdata(filelist,n):
 		data=np.float64((dtmp['DATA']).reshape(fsub,nsblk,npol,nchan)*dtmp['dat_scl'].reshape(fsub,1,npol,nchan)+dtmp['dat_offs'].reshape(fsub,1,npol,nchan)).reshape(fsub*nsblk,npol,nchan)
 		del f['SUBINT'].data
 		f.close()
-		tmp=gendata(cumsub,file_len[n]*nsblk,data,tpsub,tpsubn,last=True)
+		tmp=gendata(cumsub,file_len[n]*nsblk,data,tpsub,tpsubn,last=True,lock=lock)
 	else:
 		for i in np.arange(fsub):
 			cumsub=np.int64(file_len[:n].sum()+i)
 			dtmp=f['SUBINT'].data[i]
 			data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
 			del f['SUBINT'].data
-			tpsub,tpsubn=gendata(cumsub,nsblk,data,tpsub,tpsubn,last=(i==(fsub-1)),first=i==0)
+			tpsub,tpsubn=gendata(cumsub,nsblk,data,tpsub,tpsubn,last=(i==(fsub-1)),first=i==0,lock=lock)
 		f.close()
 	gc.collect()
 	if args.verbose:
-		Manager().Lock().acquire()
+		if args.multi: lock.acquire()
 		sys.stdout.write('Processing the '+str(n+1)+'th fits file takes '+str(time.time()-timemark)+' second.\n')
-		Manager().Lock().release()
+		if args.multi: lock.release()
 #
 if args.multi:
 	pool=Pool(processes=args.multi)
+	lock=Manager().Lock()
 #
 for n in np.arange(filenum):
 	if args.multi:
-		pool.apply_async(dealdata,(filelist,n))
+		pool.apply_async(dealdata,(filelist,n,lock))
 	else:
 		dealdata(filelist,n)
 if args.multi:

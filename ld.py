@@ -206,7 +206,7 @@ class ld():
 		data=np.zeros(bin_num)
 		self.file=open(self.name,'rb')
 		for i in select_chan:
-			self.file.seek(24+ndata_chan*i*8+bin_start*8*self.__size__[4])
+			self.file.seek(24+ndata_chan*i*8+bin_start*8)
 			data+=np.array(st.unpack('>'+str(bin_num)+'d',self.file.read(bin_num*8)))
 		data=data.reshape([end_period-start_period,self.__size__[3],self.__size__[4]])
 		return data
@@ -228,7 +228,7 @@ class ld():
 		data=np.zeros([len(select_chan),self.__size__[3],self.__size__[4]])
 		self.file=open(self.name,'rb')
 		for i in range(len(select_chan)):
-			self.file.seek(24+ndata_chan*select_chan[i]*8+bin_start*8*self.__size__[4])
+			self.file.seek(24+ndata_chan*select_chan[i]*8+bin_start*8)
 			data[i]=np.array(st.unpack('>'+str(bin_num)+'d',self.file.read(bin_num*8))).reshape(end_period-start_period,self.__size__[3],self.__size__[4]).sum(0)
 		return data
 	#

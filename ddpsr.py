@@ -455,7 +455,7 @@ if args.multi:
 	pool.close()
 	pool.join()
 #
-if fscrunch:
+if args.fscrunch:
 	for i in np.arange(nchan1):
 		fdata=d.chan_scrunch(np.int32(np.arange(fscrunch)+i*fscrunch))
 		d.write_chan(fdata,np.int32(i))

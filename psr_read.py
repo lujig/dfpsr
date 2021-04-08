@@ -153,7 +153,8 @@ class psr:
 	#
 	def readpara(self,parfile=False):
 		if parfile: paras=open(self.name).read().split('\n')
-		else: paras=sp.getoutput('psrcat -e '+self.name).split('\n')
+		elif type(self.name) is str: paras=sp.getoutput('psrcat -e '+self.name).split('\n')
+		elif type(self.name) is list: paras=self.name
 		paras=dict(list(map(lambda x: [x[0],np.array(x[1].split())],map(lambda x: x.split(None,1),paras))))
 		paras_key=paras.keys()
 		self.paras=[]
