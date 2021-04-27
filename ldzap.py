@@ -67,7 +67,7 @@ if args.zap_file:
 	zaparray[zapnum,:]=True
 	testdata.mask=zaparray
 #
-spec=testdata.sum(1)
+spec=testdata.std(1)
 spec=spec-np.min(spec)
 spec0=np.append(0,np.append(spec.repeat(2),0))
 spec1=copy.deepcopy(spec0)
@@ -156,7 +156,7 @@ def update_image():
 	zapnum=set()
 	for i in zaplist:
 		zapnum.update(i)
-	zapnum=np.array(list(zapnum))
+	zapnum=np.int32(list(zapnum))
 	zaparray=np.zeros_like(testdata)
 	zaparray[zapnum,:]=True
 	testdata.mask=zaparray

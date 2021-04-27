@@ -46,6 +46,6 @@ ld.py:
 
 Dependence: 
 
-	Software: PSRCAT and TEMPO2
+	Software: PSRCAT
 
-	Python module: numpy, matplotlib, astropy, mpmath and Tkinter
+	Python module: numpy, matplotlib, scipy, astropy, mpmath and tkinter
