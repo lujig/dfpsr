@@ -44,6 +44,15 @@ ldconv.py:
 ld.py:
 	Provide some functions to access ld format data. With these functions, one can read data and information of ld file, or write data and information in a ld file.
 
+time_eph.py:
+	Provide a class to calculate the position of FAST, the ephemris of the solar system, and to convert the time between different time standard.
+
+psr_read.py:
+	Provide a class to obtain the ephemris of the pulsar basing on the PSRCAT.
+
+psr_timing.py:
+	Provide a class to calculate the pulse phase of a pulsar with a given time and a given frequency.
+
 Dependence: 
 
 	Software: PSRCAT
