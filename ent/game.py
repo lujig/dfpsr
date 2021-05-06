@@ -10,6 +10,7 @@ import snake
 import tetris
 import bricks
 import dict as di
+import os
 #
 dirname=os.path.split(os.path.realpath(__file__))[0]
 #

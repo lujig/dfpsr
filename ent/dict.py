@@ -1,5 +1,6 @@
 import numpy as np
 import struct as st
+import os
 #
 dirname=os.path.split(os.path.realpath(__file__))[0]
 #
