@@ -249,11 +249,11 @@ if args.zap_file:
 else:
 	zchan=[]
 name=args.output
-if os.path.isfile(name):
-	parser.error('The name of output file already existed. Please provide a new name.')
 if len(name)>3:
 	if name[-3:]=='.ld':
 		name=name[:-3]
+if os.path.isfile(name+'.ld'):
+	parser.error('The name of output file already existed. Please provide a new name.')
 #
 if args.reverse:
 	command.append('-r')
@@ -357,7 +357,7 @@ else:
 	phase_end=timing_test_start.phase.date[-1]
 	phase=timing_test_end.phase.date-phase_start+timing_test_end.phase.second
 	nperiod=phase_end-phase_start
-	period=timing_test_end.phase.date[-1]-timing_test_end.phase.date[0]+timing_test_end.phase.second[-1]-timing_test_end.phase.second[-1]
+	period=((time_test.date[-1]-time_test.date[0])*time_test.unit+time_test.second[-1]-time_test.second[0])/(timing_test_end.phase.date[-1]-timing_test_end.phase.date[0]+timing_test_end.phase.second[-1]-timing_test_end.phase.second[0])
 	cheb_end=nc.chebfit(chebx_test,timing_test_end.phase.date-phase_start,args.ncoeff-1)
 	roots=nc.chebroots(cheb_end)
 	roots=np.real(roots[np.isreal(roots)])
@@ -377,12 +377,12 @@ else:
 		phase_tmp[i]=timing_test.phase.date-phase_start+timing_test.phase.second+disp_tmp[i]
 	coeff_freq=np.polyfit(1/freqy,disp_tmp,4)
 	coeff=nc.chebfit(chebx_test,nc.chebfit(cheby,phase_tmp,1).T,args.ncoeff-1)
-	info['predictor']=coeff
-	info['predictor_freq']=coeff_freq
+	info['predictor']=list(map(list,coeff))
+	info['predictor_freq']=list(coeff_freq)
 #
-info['stt_sec']=stt_sec
-info['stt_date']=stt_date
-info['stt_time']=stt_date+stt_sec/86400.0
+info['stt_sec']=stt_sec[0]
+info['stt_date']=stt_date[0]
+info['stt_time']=stt_date[0]+stt_sec[0]/86400.0
 #
 info['nperiod']=nperiod
 info['period']=period

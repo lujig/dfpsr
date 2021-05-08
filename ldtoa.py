@@ -16,6 +16,7 @@ parser.add_argument('-T',action='store_true',default=False,dest='tscrunch',help=
 parser.add_argument('-r','--frequency_range',default=0,dest='freqrange',help='calculate in the frequency range (FREQ0,FREQ1)')
 parser.add_argument('-s','--subint_range',default=0,dest='subint_range',help='calculate in the subint range (SUBINT0,SUBINT1)')
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
+parser.add_argument("-a","--toa",dest="toa",action='store_true',default=False,help="save all ToA at different frequency.")
 parser.add_argument("-o","--output",dest="output",default="toa",help="outputfile name")
 args=(parser.parse_args())
 command=['ldtoa.py']
@@ -124,8 +125,6 @@ if os.path.isfile(name):
 if len(name)>3:
 	if name[-3:]=='.ld':
 		name=name[:-3]
-#d1=ld.ld(name+'.ld')
-#d1.write_shape([nchan_new,nsub_new,nbin_new,npol_new])
 #
 if 'history' in info.keys():
 	if type(info['history'])==list:
@@ -166,7 +165,7 @@ def lin(x,k):
 def dmdt(df,ddm,dt0):
 	return ddm/df**2*4148.808/np.float64(info['period'])+dt0
 #
-def poa(tpdata0,tpdata):
+def poa(tpdata0,tpdata,fulloutput=False):
 	import matplotlib.pyplot as plt
 	plt.figure(1)
 	nb=int(min(nbin0,nbin)//2+1)
@@ -203,14 +202,22 @@ def poa(tpdata0,tpdata):
 	dmerr,t1err=np.diagonal(pcov)**0.5
 	t0=(dt/dterr**2).sum()/(1/dterr**2).sum()
 	t0err=1/((1/dterr**2).sum())**0.5
-	return [dm,dmerr],[t1,t1err],[t0,t0err]
+	if fulloutput:
+		return [[dm,dmerr],[t1,t1err],[t0,t0err]],dt,dterr
+	else:
+		return [dm,dmerr],[t1,t1err],[t0,t0err]
 #
 if args.freqrange:
 	freq_start,freq_end=np.float64(args.freqrange.split(','))
 	chanstart,chanend=np.int16(np.round((np.array([freq_start,freq_end])-freq)/channel_width+0.5*nchan))
 freq_new=np.linspace(freq_start,freq_end,nchan_new+1)
 freq=np.linspace(freq_start,freq_end,nchan0+1)
-if args.subint_range:
+d1=ld.ld(name+'.ld')
+if args.toa:
+	d1.write_shape([nchan_new,nsub_new,2,1])
+else:
+	d1.write_shape([1,nsub_new,8,1])
+if nsub_new>1:
 	p0=np.zeros([nsub_new,3,2])
 	for s in np.arange(nsub_new):
 		tpdata0=np.zeros([nchan_new,nbin])
@@ -227,8 +234,13 @@ if args.subint_range:
 				tpdata0[chan0-1]+=data[i]
 			else:
 				parser.error('The unexpected error.')
-		p0[s]=poa(tpdata0,tpdata)
-		print(np.float64(info['stt_date']),np.float64(info['stt_sec'])+(s+0.5)*np.float64(info['sub_nperiod'])*np.float64(info['period']),*p0[s].reshape(-1))
+		if args.toa:
+			p0[s],dt,dterr=poa(tpdata0,tpdata,fulloutput=True)
+			d1.write_period(np.array([dt,dterr]).T,s)
+		else:
+			p0[s]=poa(tpdata0,tpdata)
+			d1.write_period(np.array([np.float64(info['stt_date'][1:-1]),np.float64(info['stt_sec'][1:-1])+(s+0.5)*np.float64(info['sub_nperiod'])*np.float64(info['period']),*p0[s].reshape(-1)]),s)
+		print(np.float64(info['stt_date'][1:-1]),np.float64(info['stt_sec'][1:-1])+(s+0.5)*np.float64(info['sub_nperiod'])*np.float64(info['period']),*p0[s].reshape(-1))
 else:
 	tpdata0=np.zeros([nchan_new,nbin])
 	data=d.period_scrunch()[chanstart:chanend,:,0]
@@ -244,9 +256,17 @@ else:
 			tpdata0[chan0-1]+=data[i]
 		else:
 			parser.error('The unexpected error.')
-	p0=poa(tpdata0,tpdata)
+	if args.toa:
+		p0,dt,dterr=poa(tpdata0,tpdata,fulloutput=True)
+		d1.write_period(np.array([dt,dterr]).T,s)
+	else:
+		p0=poa(tpdata0,tpdata)
+		d1.write_period(np.array([np.float64(info['stt_date'][1:-1]),np.float64(info['stt_sec'][1:-1])+(s+0.5)*np.float64(info['sub_nperiod'])*np.float64(info['period']),*p0[s].reshape(-1)]),s)
+	print(np.float64(info['stt_date'][1:-1]),np.float64(info['stt_sec'][1:-1])+0.5*nperiod*np.float64(info['period']),*p0.reshape(-1))
 #
 #print(p0)
+if args.toa:
+	info['ToA']=p0.reshape(-1)
 info['mode']='ToA'
-#d1.write_info(info)
+d1.write_info(info)
 #!/usr/bin/env python
