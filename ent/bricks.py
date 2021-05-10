@@ -50,19 +50,17 @@ class bricks_class:
         self.wall.zorder=0
         self.tableedge=1.5
         self.ballradius=0.6
-        self.vellim=20
+        self.vellim=40
         self.trans_direct=0
-        self.platevel=10
+        self.platevel=15
         if self.hard==9:
             self.tablewidth=self.height*0.9
             self.pocketradius=self.ballradius*1.4
-            self.ballvel=20
             self.acc=0.1
             self.platelen0=2
         else:
             self.tablewidth=self.height*(self.hard*0.03+0.47)
             self.pocketradius=self.ballradius*(3.6-self.hard*0.2)
-            self.ballvel=9+self.hard
             self.acc=0.01+0.005*self.hard
             self.platelen0=6-self.hard*0.33
         self.tablecorner=[(self.tableedge,self.height-self.tablewidth-self.tableedge),(self.width-self.tableedge,self.height-self.tablewidth-self.tableedge),(self.width-self.tableedge,self.height-self.tableedge),(self.tableedge,self.height-self.tableedge)]
@@ -90,6 +88,8 @@ class bricks_class:
         else:
             self.level=int((self.removenum-9)/(2+self.hard/9.0))+4
         self.platelen=self.platelen0*(1-0.05*self.level)
+        if hasattr(self,'ballvel'):
+        	if self.level>tmp: self.ballvel+=1+self.hard*0.1
         if not (tmp==3 and self.level==4): return
         self.table=self.axis.add_patch(plt.Rectangle((self.tableedge,self.height-self.tablewidth-self.tableedge),self.width-2*self.tableedge,self.tablewidth,linewidth=2,edgecolor='#FFD700',facecolor='#458B00'))
         self.table.zorder=1
@@ -322,6 +322,8 @@ class bricks_class:
         for i in range(8):
             billiards.append([plt.Circle((8+i*2.0,18.54),self.ballradius,facecolor=self.colorbox[nr.randint(6)],ec='#c0c0c0',linewidth=0.5),0,0])
         self.ball=[self.axis.add_patch(ball),0,0]
+        if self.hard==9: self.ballvel=20
+        else: self.ballvel=9+self.hard
         self.plate=self.axis.add_patch(plate)
         self.ball[0].zorder=2
         self.plate.zorder=2
@@ -399,6 +401,8 @@ class bricks_class:
         for i in range(8):
             billiards.append([plt.Circle((8+i*2.0,18.54),self.ballradius,facecolor=self.colorbox[nr.randint(6)],ec='#c0c0c0',linewidth=0.5),0,0])
         self.ball=[self.axis.add_patch(ball),0,0]
+        if self.hard==9: self.ballvel=20
+        else: self.ballvel=9+self.hard
         self.plate=self.axis.add_patch(plate)
         self.ball[0].zorder=2
         self.plate.zorder=2
