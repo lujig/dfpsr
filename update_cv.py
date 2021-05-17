@@ -103,6 +103,6 @@ b0=ss.firwin(101,0.005)
 dt2=ss.lfilter(b0,1,dt1) 
 f=open(dirname+'/conventions/'+'local2gps.txt','w')
 for i in range(lenb-100):
-	f.write(str(int(t0[i+50]))+'     '+'{:.12f}'.format(dt2[i+100])+'\n')
+	f.write(str(int(t1[i+50]))+'     '+'{:.12f}'.format(dt2[i+100])+'\n')
 f.close()
 

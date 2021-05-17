@@ -686,6 +686,7 @@ class psr_timing:
 		omega=(self.psr.om+omdot*tt0/(86400*365.25))/180*np.pi
 		gamma=self.psr.gamma
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		ep=phase*1.0
 		dep=1
@@ -721,6 +722,7 @@ class psr_timing:
 			omega[jj]+=self.psr.bpjom[i]
 			pb[jj]+=self.psr.bpjpb[i]
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		ep=phase*1.0
 		dep=1
@@ -745,6 +747,7 @@ class psr_timing:
 		omega=(self.psr.om+omdot*tt0/(86400*365.25))/180*np.pi
 		gamma=self.psr.gamma
 		orbits=tt0*(self.psr.fb0+1/2*tt0*(self.psr.fb1+1/3*tt0*(self.psr.fb2+1/4*tt0*self.psr.fb3)))
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		ep=phase*1.0
 		dep=1
@@ -804,6 +807,7 @@ class psr_timing:
 				orbifuncV=self.psr.orbifuncV[order]
 				for k in np.arange(len(orbits)):
 					orbits[k]+=orbifuncV[np.argmax(self.time.tcb.mjd[k]>orbifuncT)]
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		dre=x0*(np.sin(phase)-0.5*(e1*np.cos(2*phase)-e2*np.sin(2*phase)))
 		brace=1-si*np.sin(phase)
@@ -856,6 +860,7 @@ class psr_timing:
 				mode,h4,nharm,stig=0,0,3,0
 		if si>1.0: si=1.0
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		brace=1-si*np.sin(phase)
 		dlogbr=np.log(brace)
@@ -901,6 +906,7 @@ class psr_timing:
 		e2=eps2*np.cos(dom)-eps1*np.sin(dom)
 		orbits=tt0/pb
 		orbits-=0.5*(pbdot+xpbdot)*(tt0/pb)**2
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		dre=x0*(np.sin(phase)-0.5*(e1*np.cos(2*phase)-e2*np.sin(2*phase)))
 		brace=1-si*np.sin(phase)
@@ -937,6 +943,7 @@ class psr_timing:
 		ecc=self.psr.ecc+edot*tt0
 		er,eth=ecc*(1+dr),ecc*(1+dth)
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		u=phase*1.0
 		du=1
@@ -994,6 +1001,7 @@ class psr_timing:
 		ecc=self.psr.ecc+edot*tt0
 		er,eth=ecc*(1+dr),ecc*(1+dth)
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		u=phase*1.0
 		du=1
@@ -1075,6 +1083,7 @@ class psr_timing:
 			si+=ci*dpara*xpr
 			omz-=1.0/si*dpara*ypr
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		u=phase*1.0
 		du=1
@@ -1127,6 +1136,7 @@ class psr_timing:
 		ecc=self.psr.ecc+edot*tt0
 		er,eth=ecc*(1+dr),ecc*(1+dth)
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		u=phase*1.0
 		du=1
@@ -1199,6 +1209,7 @@ class psr_timing:
 		dth=(3.5*m1**2+6*m1*m2+2*m2**2)/(arr*m)
 		er,eth=ecc*(1+dr),ecc*(1+dth)
 		orbits=tt0/pb-0.5*(pbdot+xpbdot)*(tt0/pb)**2
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		u=phase*1.0
 		du=1
@@ -1262,6 +1273,7 @@ class psr_timing:
 		k=omdot/an/(180/np.pi*365.25*86400)
 		xi=xdot/an
 		orbits=tt0/pb-0.5*pbdot*(tt0/pb)**2
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		ecc=ecc0+edot*tt0+0.5*e2dot*tt0**2
 		er,eth=ecc*(1+dr),ecc*(1+dth)
@@ -1394,6 +1406,7 @@ class psr_timing:
 		eps2+=eps2dot*tt0
 		ecc[(ecc<0)|(ecc>=1)]=0.0
 		orbits  = tt0/pb - 0.5*(pbdot+xpbdot)*(tt0/pb)**2 - 1./6.*pb2dot*(tt0/pb)**3
+		self.orbits=orbits
 		phase=2*np.pi*(orbits%1)
 		if 'ecc' in self.psr.paras:
 			u=phase*1.0

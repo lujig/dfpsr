@@ -61,7 +61,7 @@ def file_check(fname,notfirst=True,filetype='data'):
 	subint=f['SUBINT']
 	subint_header=subint.header
 	subint_data=subint.data[0]
-	global telename,pol_type,npol,nchan,freq,bandwidth,tsamp,nsblk,bw_sign,stt_imjd,stt_smjd,stt_offs,nsub
+	global telename,pol_type,npol,nchan,freq,bandwidth,tsamp,nsblk,bw_sign,stt_imjd,stt_smjd,stt_offs,nsub,offs_sub
 	if not notfirst:
 		telename=head['TELESCOP']
 		npol=subint_header['NPOL']
@@ -347,9 +347,10 @@ if args.period or (not pepoch):
 	stt_date=time0[-1]+stt_sec//86400
 	stt_sec=stt_sec%86400
 else:
-	chebx_test=nc.chebpts1(args.ncoeff)
+	chebx_test0=nc.chebpts1(args.ncoeff)
+	chebx_test=np.concatenate(([-1],chebx_test0,[1]),axis=0)
 	second_test=(chebx_test+1)/2*nbin0*tsamp+file_time[0][:-1].sum()-delay
-	time_test=te.time(file_time[0][-1]*np.ones(args.ncoeff),second_test,scale='local')
+	time_test=te.time(file_time[0][-1]*np.ones(args.ncoeff+2),second_test,scale='local')
 	times_test=te.times(time_test)
 	timing_test_end=pm.psr_timing(psr,times_test,freq_end)
 	timing_test_start=pm.psr_timing(psr,times_test,freq_start)
@@ -358,22 +359,22 @@ else:
 	phase=timing_test_end.phase.date-phase_start+timing_test_end.phase.second
 	nperiod=phase_end-phase_start
 	period=((time_test.date[-1]-time_test.date[0])*time_test.unit+time_test.second[-1]-time_test.second[0])/(timing_test_end.phase.date[-1]-timing_test_end.phase.date[0]+timing_test_end.phase.second[-1]-timing_test_end.phase.second[0])
-	cheb_end=nc.chebfit(chebx_test,timing_test_end.phase.date-phase_start,args.ncoeff-1)
+	cheb_end=nc.chebfit(chebx_test,timing_test_end.phase.date-phase_start+timing_test_end.phase.second,args.ncoeff-1)
 	roots=nc.chebroots(cheb_end)
 	roots=np.real(roots[np.isreal(roots)])
-	root=roots[np.argmin(np.abs(roots+1))]
+	root=roots[np.argmin(np.abs(roots))]
 	stt_time_test=te.time(file_time[0][-1],(root+1)/2*nbin0*tsamp+file_time[0][:-1].sum()-delay,scale='local')
 	stt_sec=stt_time_test.second
 	stt_date=stt_time_test.date
 	info['phase0']=phase_start
 	ncoeff_freq=10
-	phase_tmp=np.zeros([ncoeff_freq,args.ncoeff])
+	phase_tmp=np.zeros([ncoeff_freq,args.ncoeff+2])
 	disp_tmp=np.zeros(ncoeff_freq)
 	cheby=nc.chebpts1(ncoeff_freq)
 	freqy=(cheby+1)/2*bandwidth+freq_start
 	for i in np.arange(ncoeff_freq):
 		timing_test=pm.psr_timing(psr,times_test,freqy[i])
-		disp_tmp[i]=((timing_test.tdis1+timing_test.tdis2)/timing_test.period_now).mean()
+		disp_tmp[i]=((timing_test.tdis1+timing_test.tdis2)/period).mean()
 		phase_tmp[i]=timing_test.phase.date-phase_start+timing_test.phase.second+disp_tmp[i]
 	coeff_freq=np.polyfit(1/freqy,disp_tmp,4)
 	coeff=nc.chebfit(chebx_test,nc.chebfit(cheby,phase_tmp,1).T,args.ncoeff-1)

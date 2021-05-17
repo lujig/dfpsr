@@ -5,6 +5,9 @@ import argparse as ap
 import numpy.fft as fft
 import os,ld,time
 import scipy.optimize as so
+import time_eph as te
+import psr_read as pr
+import psr_timing as pm
 #
 version='JigLu_20201202'
 parser=ap.ArgumentParser(prog='ldtoa',description='Get the ToA and DM of the ld file.',epilog='Ver '+version)
@@ -166,8 +169,6 @@ def dmdt(df,ddm,dt0):
 	return ddm/df**2*4148.808/np.float64(info['period'])+dt0
 #
 def poa(tpdata0,tpdata,fulloutput=False):
-	import matplotlib.pyplot as plt
-	plt.figure(1)
 	nb=int(min(nbin0,nbin)//2+1)
 	dt,dterr=np.zeros(nchan_new),np.zeros(nchan_new)
 	for i in np.arange(nchan_new):
@@ -219,6 +220,13 @@ else:
 	d1.write_shape([1,nsub_new,8,1])
 if nsub_new>1:
 	p0=np.zeros([nsub_new,3,2])
+	phase0=int(info['phase0'])
+	sub_nperiod=int(info['sub_nperiod'])*np.ones(nperiod,dtype=np.float64)
+	sub_nperiod[-1]=int(info['sub_nperiod_last'])
+	middle=sub_nperiod.cumsum()-sub_nperiod/2
+	time0=np.linspace(0,np.float64(info['length']),nperiod)
+	phase1=pm.psr_timing(pr.psr(info['psr_name']),te.times(te.time(np.float64(info['stt_date'])*np.ones(nperiod,dtype=np.float64),np.float64(info['stt_sec'])+time0)),(np.float64(info['freq_start'])+np.float64(info['freq_end']))/2).phase
+	middle_time=np.interp(middle,phase1.date-phase0+phase1.second,time0)[sub_start:sub_end]
 	for s in np.arange(nsub_new):
 		tpdata0=np.zeros([nchan_new,nbin])
 		data=d.read_period(s+sub_start)[chanstart:chanend,:,0]
@@ -239,10 +247,19 @@ if nsub_new>1:
 			d1.write_period(np.array([dt,dterr]).T,s)
 		else:
 			p0[s]=poa(tpdata0,tpdata)
-			d1.write_period(np.array([np.float64(info['stt_date'][1:-1]),np.float64(info['stt_sec'][1:-1])+(s+0.5)*np.float64(info['sub_nperiod'])*np.float64(info['period']),*p0[s].reshape(-1)]),s)
-		print(np.float64(info['stt_date'][1:-1]),np.float64(info['stt_sec'][1:-1])+(s+0.5)*np.float64(info['sub_nperiod'])*np.float64(info['period']),*p0[s].reshape(-1))
+			d1.write_period(np.array([np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time[s],*p0[s].reshape(-1)]),s)
+		print(np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time[s],*p0[s].reshape(-1))
 else:
 	tpdata0=np.zeros([nchan_new,nbin])
+	phase0=int(info['phase0'])
+	sub_nperiod=int(info['sub_nperiod'])*np.ones(nperiod,dtype=np.float64)
+	sub_nperiod[-1]=int(info['sub_nperiod_last'])
+	sub_nperiod_cumsum=sub_nperiod.cumsum()
+	if sub_start==0: middle=sub_nperiod_cumsum[sub_end]/2
+	else: middle=(sub_nperiod_cumsum[sub_start-1]+sub_nperiod_cumsum[sub_end])/2
+	time0=np.linspace(0,np.float64(info['length']),12)
+	phase1=pm.psr_timing(pr.psr(info['psr_name']),te.times(te.time(np.float64(info['stt_date'])*np.ones(12,dtype=np.float64),np.float64(info['stt_sec'])+time0)),(np.float64(info['freq_start'])+np.float64(info['freq_end']))/2).phase
+	middle_time=np.interp(middle,phase1.date-phase0+phase1.second,time0)[sub_start:sub_end]
 	data=d.period_scrunch()[chanstart:chanend,:,0]
 	for i in np.arange(chanend-chanstart):
 		if i in zchan: continue
@@ -261,8 +278,8 @@ else:
 		d1.write_period(np.array([dt,dterr]).T,s)
 	else:
 		p0=poa(tpdata0,tpdata)
-		d1.write_period(np.array([np.float64(info['stt_date'][1:-1]),np.float64(info['stt_sec'][1:-1])+(s+0.5)*np.float64(info['sub_nperiod'])*np.float64(info['period']),*p0[s].reshape(-1)]),s)
-	print(np.float64(info['stt_date'][1:-1]),np.float64(info['stt_sec'][1:-1])+0.5*nperiod*np.float64(info['period']),*p0.reshape(-1))
+		d1.write_period(np.array([np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time,*p0[s].reshape(-1)]),s)
+	print(np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time,*p0.reshape(-1))
 #
 #print(p0)
 if args.toa:

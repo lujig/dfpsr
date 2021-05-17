@@ -518,7 +518,8 @@ class time:
 				f.seek(nri*30)
 				interplist.extend(f.read(60).split())
 			t,dt=np.float64(interplist).reshape(-1,2).T
-			gpssec=np.interp(self.mjd,t,dt)
+			order=np.argsort(t)
+			gpssec=np.interp(localunix.mjd,t[order],dt[order])
 			f.close()
 			f=np.loadtxt(dirname+'/conventions/'+'gps2utc.txt')
 			t,dt=f[:,0:2].T
