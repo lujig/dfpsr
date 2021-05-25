@@ -22,6 +22,9 @@ class psr_timing:
 		self.compute_shklovskii_delay()
 		self.compute_phase()
 	#
+	def copy(self):
+		return cp.deepcopy(self)
+	#
 	def compute_shklovskii_delay(self):
 		t0=self.bat.minus(self.psr.posepoch).mjd*86400
 		self.shklovskii=t0**2/2/te.sl*self.psr.dshk*kpc2m*(self.psr.pmra**2+self.psr.pmdec**2)*mas_yr2rad_s**2
@@ -261,8 +264,8 @@ class psr_timing:
 		#
 		deltat=deltaT.mjd*deltaT.unit
 		phase3=1/2*deltat**2*(self.psr.f1+1/3*deltat*(self.psr.f2+1/4*deltat*(self.psr.f3+1/5*deltat*(self.psr.f4+1/6*deltat*self.psr.f5))))  # precision???
-		self.period_now=1/(self.psr.f0+deltat*(self.psr.f1+1/2*deltat*(self.psr.f2+1/3*deltat*(self.psr.f3+1/4*deltat*(self.psr.f4+1/5*deltat*self.psr.f5)))))
-		self.period_earth=self.period_now*self.vchange
+		self.dphasedt=self.psr.f0+deltat*(self.psr.f1+1/2*deltat*(self.psr.f2+1/3*deltat*(self.psr.f3+1/4*deltat*(self.psr.f4+1/5*deltat*self.psr.f5))))
+		self.period_now=1/self.dphasedt
 		if 'mode_switch' in self.psr.paras: phase2state=self.psr.mode_switch
 		else: phase2state=0
 		if 'brake' in self.psr.paras:

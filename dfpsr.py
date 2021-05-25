@@ -186,7 +186,7 @@ elif args.psr_name or args.par_file:
 		par_file=open(args.par_file,'r')
 		psr_par=par_file.readlines()
 		par_file.close()
-		psr=pr.psr(par_file,parfile=True)
+		psr=pr.psr(args.par_file,parfile=True)
 	info['psr_par']=psr_par
 	pepoch=False
 	for line in psr_par:

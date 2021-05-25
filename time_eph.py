@@ -3,6 +3,7 @@ import numpy.polynomial.chebyshev as nc
 import struct as st
 import datetime as dt
 import os
+import copy as cp
 #
 ephname='DE436.1950.2050'
 sl=299792458.0
@@ -288,7 +289,7 @@ class vector:
 		return self.__str__()
 	#
 	def copy(self):
-		return vector(self.x,self.y,self.z,center=self.center,scale=self.scale,coord=self.coord,unit=self.unit,type0=self.type)
+		return cp.deepcopy(self)
 	#
 	def equ2ecl(self):
 		if ((self.scale=='si')|(self.scale=='tdb'))&(self.coord=='equ'):
@@ -462,7 +463,7 @@ class time:
 		return self.__str__()
 	#
 	def copy(self):
-		return time(self.date,self.second,scale=self.scale,unit=self.unit)
+		return cp.deepcopy(self)
 	#
 	def minus(self,time1):
 		if self.unit==time1.unit:

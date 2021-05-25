@@ -1,15 +1,106 @@
 import numpy as np
 import time_eph as te
 import subprocess as sp
+import copy as cp
+import os
 #
 class psr:
-	def __init__(self,name,parfile=False):
+	def __init__(self,name,parfile=False,glitch=False):
 		self.name=name
-		self.readpara(parfile=parfile)
+		self.readpara(parfile=parfile,glitch=glitch)
 		if self.units=='tdb':
 			self.change_units()
 		if 'raj' in self.paras: self.cal_pos()
 		elif 'elong' in self.paras: self.cal_pos_ecl()
+	#
+	def copy(self):
+		return cp.deepcopy(self)
+	#
+	def modify(self,para,paraval=0):
+		if para not in self.paras:
+			self.paras.append(para)
+			if paraval==0:
+				return
+			if para in {'p2', 'p1', 'f1', 'p3', 'f2', 'f3'}:
+				if para=='p1': self.paras.append('f1')
+				elif para=='f1': self.paras.append('p1')
+				elif para=='p2': self.paras.append('f2')
+				elif para=='f2': self.paras.append('p2')
+				elif para=='p3': self.paras.append('f3')
+				elif para=='f3': self.paras.append('p3')
+		if not paraval==0:
+			if para=='binary':
+				if self.binary:
+					paradict0=eval('paras_'+self.binary)
+					paralist0=paradict0['necessary']+paradict0['optional']
+					paradict=eval('paras_'+paraval)
+					paralist=paradict['necessary']+paradict['optional']
+					for i in paralist0:
+						if (i in self.paras) and (i not in paralist): 
+							delattr(self, i)
+							self.paras.remove(i)
+			elif para in paras_binary:
+				if self.binary:
+					paradict=eval('paras_'+self.binary)
+					paralist=paradict['necessary']+paradict['optional']
+					if i not in paralist: raise Exception('The '+self.binary+' model does not have parameter '+para+'.')
+				else:
+					raise Exception('The parameter '+para+' is a parameter in binary model, but the pulsar '+self.name+' is not a binary pulsar.')
+			elif para in ['name',  'ephver', 'ephem', 'units']:
+				raise Exception('The parameter '+para+' cannot be modified.')
+			elif para in {'p0', 'f0', 'p2', 'p1', 'f1', 'p3', 'f2', 'f3'}:
+				if para=='p0': self.f0=1/paraval
+				elif para=='f0': self.p0=1/paraval
+				elif para=='p1': self.f1=-paraval*self.f0**2
+				elif para=='f1': self.p1=-paraval*self.p0**2
+				elif para=='p2': self.f2=-paraval*self.f0**2-2*self.p1*self.f0*self.f1
+				elif para=='f2': self.p2=-paraval*self.p0**2-2*self.f1*self.p0*self.p1
+				elif para=='p3': self.f3=-paraval*self.f0**2-4*self.p2*self.f0*self.f1-2*self.p1*self.f1**2-2*self.p1*self.f0*self.f2
+				elif para=='f3': self.p3=-paraval*self.p0**2-4*self.f2*self.p0*self.p1-2*self.f1*self.p1**2-2*self.f1*self.p0*self.p2
+			elif para in paras_time:
+				paraval=te.time(paraval,0,scale=self.units)
+			elif para not in all_paras:
+				raise Exception('The parameter '+para+' cannot be recognized.')
+			self.__setattr__(para,paraval)
+		else:
+			if para=='binary':
+				paradict0=eval('paras_'+self.binary)
+				paralist0=paradict0['necessary']+paradict0['optional']
+				for i in paralist0:
+					if (i in self.paras): 
+						delattr(self, i)
+						self.paras.remove(i)
+			elif para in paras_binary:
+				paradict=eval('paras_'+self.binary)
+				paralist=paradict['necessary']
+				if para in paralist: raise Exception('The parameter '+para+' is a necessary parameter in '+self.binary+' model and cannot be removed.')
+			elif para in ['name',  'ephver', 'ephem', 'p0', 'f0', 'dm', 'units']:
+				raise Exception('The parameter '+para+' cannot be removed.')
+			elif para in {'p2', 'p1', 'f1', 'p3', 'f2', 'f3'}:
+				if para=='p1': 
+					self.f1=0
+					self.paras.remove('f1')
+				elif para=='f1':
+					self.p1=0
+					self.paras.remove('p1')
+				elif para=='p2': 
+					self.f2=0
+					self.paras.remove('f2')
+				elif para=='f2': 
+					self.p2=0
+					self.paras.remove('p2')
+				elif para=='p3': 
+					self.f3=0
+					self.paras.remove('f3')
+				elif para=='f3': 
+					self.p3=0
+					self.paras.remove('p3')
+			elif para=='pepoch':
+				if ('f1' in self.paras) or ('f2' in self.paras) or ('f3' in self.paras) or ('f4' in self.paras) or ('f5' in self.paras):
+					raise Exception('The parameter pepoch cannot be removed if frequency derivative exists.')
+			elif para in ['dmepoch','posepoch']:
+				paraval=self.pepoch
+			self.__setattr__(para,paraval)				
 	#
 	def cal_pos(self):
 		alpha=self.raj
@@ -81,20 +172,14 @@ class psr:
 				val=self.__getattribute__(i)
 			else:
 				continue
-			if i in paras_p1:
-				factor=te.iftek
-			elif i in paras_m1:
-				factor=1/te.iftek
-			elif i in paras_m2:
-				factor=1/te.iftek**2
-			elif i in paras_m3:
-				factor=1/te.iftek**3
-			elif i in paras_m4:
-				factor=1/te.iftek**4
-			elif i in paras_m5:
-				factor=1/te.iftek**5
-			elif i in paras_m6:
-				factor=1/te.iftek**6
+			if i in para_glitch: pass
+			elif i in paras_p1: factor=te.iftek
+			elif i in paras_m1: factor=1/te.iftek
+			elif i in paras_m2: factor=1/te.iftek**2
+			elif i in paras_m3: factor=1/te.iftek**3
+			elif i in paras_m4: factor=1/te.iftek**4
+			elif i in paras_m5: factor=1/te.iftek**5
+			elif i in paras_m6: factor=1/te.iftek**6
 			elif i in paras_time:
 				factor=1
 				self.__setattr__(i,val.tcb())
@@ -117,6 +202,8 @@ class psr:
 			if not hasattr(self,i): continue
 			if i in para_with_err:
 				val=self.__getattribute__(i)
+				if type(val) is te.time:
+					val=val.mjd
 				if hasattr(self,i+'_err'): err=self.__getattribute__(i+'_err')
 				else: err=''
 				if type(val) is np.ndarray:
@@ -151,8 +238,8 @@ class psr:
 	def __repr__(self):
 		return self.__str__()
 	#
-	def readpara(self,parfile=False):
-		if parfile: paras=open(self.name).read().split('\n')
+	def readpara(self,parfile=False,glitch=False):
+		if parfile: paras=open(self.name).read().strip().split('\n')
 		elif type(self.name) is str: paras=sp.getoutput('psrcat -e '+self.name).split('\n')
 		elif type(self.name) is list: paras=self.name
 		paras=dict(list(map(lambda x: [x[0],np.array(x[1].split())],map(lambda x: x.split(None,1),paras))))
@@ -474,7 +561,69 @@ class psr:
 		self.deal_para('rm',paras,paras_key)
 		self.deal_para('dshk',paras,paras_key)
 		#
-		self.deal_paralist('glitch',paras,paras_key)
+		if glitch:
+			pwd0=sp.getoutput('which psrcat')
+			pwd1='/'.join(pwd0.split('/')[:-1])
+			glitchf=''
+			if os.path.isfile(pwd1+'/glitch.db'):
+				glitchf=pwd1+'/glitch.db'
+			elif sp.getoutput('readlink '+pwd0):
+				pwd2='/'.join(sp.getoutput('readlink '+pwd0).split('/')[:-1])
+				if pwd2[0]=='.':
+					pwd2=pwd1+'/'+pwd2
+				if os.path.isfile(pwd2+'/glitch.db'):
+					glitchf=pwd2+'/glitch.db'
+			if glitchf:
+				glitchfi=sp.getoutput('grep '+self.name+' '+glitchf)
+				if glitchfi:
+					def dealglitch(txt):
+						if '(' in txt:
+							txt,b=txt.split('(')
+							b=b[:-1]
+							if b.isdecimal():
+								tmp=np.float64(txt.replace('.',''))/np.float64(txt)
+								b=np.float64(b)/tmp
+							elif b.replace('.','').isdecimal():
+								b=np.float64(b)
+							else:
+								b=0
+						else:
+							b=0
+						if txt.replace('.','').isdecimal():
+							a=np.float64(txt)
+						else:
+							a=0
+						return a,b
+					glitchi=np.array(list(map(lambda x: x.split(),glitchfi.split('\n'))))[:,2:-1]
+					nglitch=len(glitchi)
+					gldata=np.zeros([nglitch,10])
+					self.glf2=np.zeros(nglitch)
+					self.glf2_err=np.zeros(nglitch)
+					for i in np.arange(nglitch):
+						gldata[i,0:2]=dealglitch(glitchi[i,0])
+						gldata[i,2:4]=dealglitch(glitchi[i,1])
+						gldata[i,4:6]=dealglitch(glitchi[i,2])
+						gldata[i,6:8]=dealglitch(glitchi[i,3])
+						gldata[i,8:10]=dealglitch(glitchi[i,4])
+					self.paras.extend(['glep','glf0'])
+					self.glep=te.time(gldata[:,0],np.zeros(nglitch),scale='tcb')
+					self.glep_err=gldata[:,1]
+					glf0=gldata[:,2]*1e9*self.f0
+					glf0_err=gldata[:,3]*1e9*self.f0+glf0*self.f0_err
+					self.glf1=gldata[:,4]*1e3*self.f1
+					self.glf1_err=gldata[:,5]*1e3*self.f1+self.glf1*self.f1_err
+					self.gltd=gldata[:,8]
+					self.gltd_err=gldata[:,9]
+					self.glf0d=gldata[:,6]*glf0
+					self.glf0d_err=gldata[:,7]*glf0+gldata[:,6]*glf0_err
+					self.glf0=glf0-self.glf0d
+					self.glf0_err=np.sqrt(glf0_err**2+self.glf0d_err**2)
+					if (gldata[:,4]!=0).sum()>0:
+						self.paras.append('glf1')
+					if (gldata[:,8]!=0).sum()>0:
+						self.paras.extend(['glf0d','gltd'])
+		else:
+			self.deal_paralist('glitch',paras,paras_key)
 		#
 		self.deal_para('ephver',paras,paras_key,exce='Warning: No parameter version in the parfile.', value='2')
 		self.deal_para('ephem',paras,paras_key,exce='Warning: No ephemris version in the parfile.', value='DE405')
@@ -565,7 +714,7 @@ class psr:
 #
 all_paras={'p0', 'pmra', 'pmdec', 'pmrv', 'f0', 'p2', 'p1', 'pmra2', 'pmdec2', 'f1', 'p3', 'f2', 'f3', 'f4', 'f5', 'dm', 'cm', 'dmmodel', 'dmoffs', 'dmx', 'dm_s1yr', 'dm_c1yr', 'fddc', 'fd', 'raj', 'decj', 'px' ,'cmidx', 'fddi', 'rm', 'pepoch', 'posepoch', 'dmepoch', 'dmoffs_mjd', 'dmxr1', 'dmxr2', 'name', 'dshk', 'binary','t0', 'pb', 'ecc', 'pbdot', 'a1dot', 'a1', 'omdot', 'om', 'gamma','bpjep','bpjph','bpja1','bpjec','bpjom','bpjpb', 'fb0', 'fb1', 'fb2', 'fb3', 'tasc', 'eps1', 'eps2', 'sini', 'm2', 'eps1dot', 'eps2dot', 'orbifunc', 'xpbdot', 'edot', 'kom', 'kin', 'mtot', 'a2dot', 'e2dot', 'orbpx', 'dr', 'dtheta', 'dth', 'a0', 'b0', 'om2dot', 'xomdot','afac','daop', 'pb2dot', 'ephver', 'ephem', 'dm1', 'dm2', 'dm3', 'cm1', 'cm2', 'cm3', 'glep', 'glph', 'gltd', 'glf0', 'glf1', 'glf2', 'glf0d', 'pmelong', 'pmelat', 'pmelong2', 'pmelat2'}
 # with or without error
-para_with_err={'p0', 'pmra', 'pmdec', 'pmrv', 'f0', 'p2', 'p1', 'pmra2', 'pmdec2', 'f1', 'p3', 'f2', 'f3', 'f4', 'f5', 'dm', 'cm', 'dmmodel', 'dmoffs', 'dmx', 'dm_s1yr', 'dm_c1yr', 'fddc', 'fd', 'raj', 'decj', 'px', 'cmidx', 'fddi', 'rm', 'dshk', 't0', 'pb', 'ecc', 'pbdot', 'a1dot', 'a1', 'omdot', 'om', 'gamma', 'fb0', 'fb1', 'fb2', 'fb3', 'bpjph','bpja1','bpjec','bpjom','bpjpb', 'tasc', 'eps1', 'eps2', 'sini', 'm2', 'eps1dot', 'eps2dot', 'orbifuncV','h3', 'h4','nharm','stig', 'xpbdot', 'edot', 'kom', 'kin', 'mtot', 'a2dot', 'e2dot', 'orbpx', 'dr', 'dtheta', 'dth', 'a0', 'b0', 'om2dot', 'glph', 'gltd', 'glf0', 'glf1', 'glf2', 'glf0d', 'pmelong', 'pmelat', 'pmelong2', 'pmelat2'}
+para_with_err={'p0', 'pmra', 'pmdec', 'pmrv', 'f0', 'p2', 'p1', 'pmra2', 'pmdec2', 'f1', 'p3', 'f2', 'f3', 'f4', 'f5', 'dm', 'cm', 'dmmodel', 'dmoffs', 'dmx', 'dm_s1yr', 'dm_c1yr', 'fddc', 'fd', 'raj', 'decj', 'px', 'cmidx', 'fddi', 'rm', 'dshk', 't0', 'pb', 'ecc', 'pbdot', 'a1dot', 'a1', 'omdot', 'om', 'gamma', 'fb0', 'fb1', 'fb2', 'fb3', 'bpjph','bpja1','bpjec','bpjom','bpjpb', 'tasc', 'eps1', 'eps2', 'sini', 'm2', 'eps1dot', 'eps2dot', 'orbifuncV','h3', 'h4','nharm','stig', 'xpbdot', 'edot', 'kom', 'kin', 'mtot', 'a2dot', 'e2dot', 'orbpx', 'dr', 'dtheta', 'dth', 'a0', 'b0', 'om2dot', 'glep', 'glph', 'gltd', 'glf0', 'glf1', 'glf2', 'glf0d', 'pmelong', 'pmelat', 'pmelong2', 'pmelat2'}
 para_without_err={'pepoch','posepoch','dmepoch','dmoffs_mjd','dmxr1','dmxr2','name', 'binary', 'orbifunc', 'bpjep', 'orbifunc', 'orbifuncT', 'xomdot','afac','daop', 'pb2dot', 'ephver', 'ephem', 'shapmax'}
 # tdb to tcb
 paras_p1={'p0','dshk', 'pb', 'bpjpb', 'm2', 'h3', 'mtot', 'a0', 'b0', 'a1', 'gamma', 'gltd'}
@@ -584,6 +733,7 @@ paras_time={'pepoch', 'posepoch', 'dmepoch', 't0', 'tasc'}
 paras_time_array={'dmoffs_mjd', 'dmxr1', 'dmxr2', 'bpjep', 'orbifuncT', 'glep'}
 paras_text={'name', 'binary', 'ephver', 'ephem'}
 # binary
+paras_binary={'t0', 'pb', 'fb0', 'ecc', 'a1', 'om', 'fb1', 'fb2', 'fb3', 'tasc', 'eps1', 'eps2', 'shapmax', 'kom', 'kin', 'h3', 'stig', 'h4','nharm', 'm2', 'mtot', 'xpbdot', 'sini', 'pbdot', 'a1dot', 'omdot', 'gamma', 'bpjep', 'bpjph', 'bpja1', 'bpjec', 'bpjom', 'bpjpb', 'edot', 'orbpx', 'dr', 'dtheta', 'dth', 'a0', 'b0', 'eps1dot', 'eps2dot', 'xomdot','afac','daop', 'pb2dot', 'orbifunc', 'orbifuncT', 'orbifuncV', 'om2dot'}
 paras_BT={'necessary':['t0', 'pb', 'om', 'ecc', 'a1'], 'optional':['pbdot', 'fb0', 'a1dot', 'omdot', 'gamma']}
 paras_BTJ={'necessary':['t0', 'pb', 'om', 'ecc', 'a1','bpjep','bpjph','bpja1','bpjec','bpjom','bpjpb'], 'optional':['fb0', 'pbdot', 'a1dot', 'omdot', 'gamma']}
 paras_BTX={'necessary':['t0', 'fb0', 'om', 'ecc', 'a1'], 'optional':['pb', 'fb1', 'fb2', 'fb3', 'pbdot', 'a1dot', 'omdot', 'gamma']}
