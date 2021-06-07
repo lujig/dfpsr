@@ -35,6 +35,7 @@ parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording 
 parser.add_argument("-r","--reverse",action="store_true",default=False,help="reverse the band")
 parser.add_argument("-l","--large_mem",action="store_true",default=False,help="large RAM")
 parser.add_argument("-m","--multi",dest="multi",default=0,type=int,help="number of processes")
+parser.add_argument("-w","--overwrite",action="store_true",default=False,help="overwrite the existed output file")
 args=(parser.parse_args())
 command=['dfpsr.py']
 #
@@ -253,7 +254,8 @@ if len(name)>3:
 	if name[-3:]=='.ld':
 		name=name[:-3]
 if os.path.isfile(name+'.ld'):
-	parser.error('The name of output file already existed. Please provide a new name.')
+	if not args.overwrite:
+		parser.error('The name of output file already existed. Please provide a new name.')
 #
 if args.reverse:
 	command.append('-r')

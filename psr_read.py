@@ -207,9 +207,11 @@ class psr:
 				if hasattr(self,i+'_err'): err=self.__getattribute__(i+'_err')
 				else: err=''
 				if type(val) is np.ndarray:
+					err=np.array(err).reshape(-1)
 					for k in np.arange(val.size):
 						if k==0: string+='{:12s} '.format(i.upper())
 						else: string+='{:12s} '.format('')
+						print(i,k,val,err)
 						val_str=str(val[k])
 						err_str=str(err[k])
 						string+='{:25s} {:25s}'.format(val_str,err_str)+'\n'

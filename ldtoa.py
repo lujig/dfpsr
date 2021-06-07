@@ -7,7 +7,7 @@ import os,ld,time
 import scipy.optimize as so
 import time_eph as te
 import psr_read as pr
-import psr_timing as pm
+import psr_model as pm
 #
 version='JigLu_20201202'
 parser=ap.ArgumentParser(prog='ldtoa',description='Get the ToA and DM of the ld file.',epilog='Ver '+version)
@@ -148,9 +148,11 @@ data0=d0.period_scrunch()[:,:,0]
 for i in np.arange(chanstart,chanend):
 	if res>nchan_new:
 		res-=nchan_new
+		if i in zchan: continue
 		tpdata[i_new]+=data0[i]
 	else:
 		chan_data=data0[i]
+		if i in zchan: chan_data*=0
 		tpdata[i_new]+=chan_data*(res*1.0/nchan_new)
 		i_new+=1
 		if i==chanend-1: break
@@ -231,7 +233,7 @@ if nsub_new>1:
 		tpdata0=np.zeros([nchan_new,nbin])
 		data=d.read_period(s+sub_start)[chanstart:chanend,:,0]
 		for i in np.arange(chanend-chanstart):
-			if i in zchan: continue
+			if (i+chanstart) in zchan: continue
 			chan0,chan1=np.sum(freq[i]-freq_new>0),np.sum(freq[i+1]-freq_new>0)
 			if chan0<chan1:
 				res=(freq[i+1]-freq_new[chan0])/(freq[i+1]-freq[i])
@@ -262,7 +264,7 @@ else:
 	middle_time=np.interp(middle,phase1.date-phase0+phase1.second,time0)[sub_start:sub_end]
 	data=d.period_scrunch()[chanstart:chanend,:,0]
 	for i in np.arange(chanend-chanstart):
-		if i in zchan: continue
+		if (i+chanstart) in zchan: continue
 		chan0,chan1=np.sum(freq[i]-freq_new>0),np.sum(freq[i+1]-freq_new>0)
 		if chan0<chan1:
 			res=(freq[i+1]-freq_new[chan0])/(freq[i+1]-freq[i])
