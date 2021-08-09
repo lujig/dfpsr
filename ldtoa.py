@@ -19,7 +19,6 @@ parser.add_argument('-T',action='store_true',default=False,dest='tscrunch',help=
 parser.add_argument('-r','--frequency_range',default=0,dest='freqrange',help='calculate in the frequency range (FREQ0,FREQ1)')
 parser.add_argument('-s','--subint_range',default=0,dest='subint_range',help='calculate in the subint range (SUBINT0,SUBINT1)')
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
-parser.add_argument("-a","--toa",dest="toa",action='store_true',default=False,help="save all ToA at different frequency.")
 parser.add_argument("-o","--output",dest="output",default="toa",help="outputfile name")
 args=(parser.parse_args())
 command=['ldtoa.py']
@@ -140,11 +139,20 @@ else:
 	info['history']=command
 	info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
 #
+def dmcor(data,freq,rchan):
+	data=data[rchan]
+	freq=freq[rchan]
+	return data,ddm,ddmerr
+#
+rchan=np.array(list(set(range(chanstart,chanend))-set(list(zchan))))-chanstart
+rchan0=np.array(list(set(range(nchan0))-set(list(zchan))))
+tpdata=np.zeros([nchan_new,nbin0])
+data0=d0.period_scrunch()[:,:,0]
+psr=pm.psr_timing(pr.psr(info0['psr_par']),te.times(te.time(np.float64(info0['stt_time'])+np.float64(info0['length'])/86400,0)),freq_start)
+data0,ddm,ddmerr=dmcor(data0,np.linspace(freq_start,freq_end,nchan0+1)[:-1]*psr.vchange[0],rchan0)
+i_new=0
 nchan0=chanend-chanstart
 res=nchan0
-tpdata=np.zeros([nchan_new,nbin0])
-i_new=0
-data0=d0.period_scrunch()[:,:,0]
 for i in np.arange(chanstart,chanend):
 	if res>nchan_new:
 		res-=nchan_new
@@ -159,79 +167,70 @@ for i in np.arange(chanstart,chanend):
 		tpdata[i_new]=chan_data*((nchan_new-res)*1.0/nchan_new)
 		res=nchan0-(nchan_new-res)
 #
-freq=(freq0+freq1)/2.0
-bandwidth=freq1-freq0
-channel_width=bandwidth/nchan
-chanstart,chanend=np.int16(np.round((np.array([freq0,freq1])-freq)/channel_width+0.5*nchan))
-#
 def lin(x,k):
 	return k*x
 #
-def dmdt(df,ddm,dt0):
-	return ddm/df**2*4148.808/np.float64(info['period'])+dt0
-#
-def poa(tpdata0,tpdata,fulloutput=False):
+def poa(tpdata0,tpdata):
 	nb=int(min(nbin0,nbin)//2+1)
-	dt,dterr=np.zeros(nchan_new),np.zeros(nchan_new)
-	for i in np.arange(nchan_new):
-		d0=tpdata0[i]
-		d=tpdata[i]
-		d-=d.mean()
-		d/=d.max()
-		d0-=d0.mean()
-		d0/=d0.max()
-		f0=np.fft.rfft(d0)[:nb]
-		f=np.fft.rfft(d)[:nb]
-		d0=np.fft.irfft(f0)
-		d=np.fft.irfft(f)
-		tmpnum=np.argmax(np.correlate(d0,d,mode='full'))-(nb-1)*2+1
-		d0=np.append(d0[tmpnum:],d0[:tmpnum])
-		f0=np.fft.rfft(d0)
-		df=f0/f
-		sr0=np.std(f0.real[-10:])
-		si0=np.std(f0.imag[-10:])
-		sr=np.std(f.real[-10:])
-		si=np.std(f.imag[-10:])
-		err=np.sqrt((sr**2+si**2)/np.abs(f)**2+(sr0**2+si0**2)/np.abs(f0)**2)
-		ang=np.angle(df)
-		num=20#np.where(err>0.2)[0][0]
-		ang=ang[1:num]
-		err=err[1:num]
-		popt,pcov=so.curve_fit(lin,np.arange(1,num),ang,p0=[0.0],sigma=err)
-		dt[i]=-popt/(2*np.pi)+tmpnum/(nb-1)/2
-		dterr[i]=pcov[0,0]**0.5/(2*np.pi)
-	popt,pcov=so.curve_fit(dmdt,(freq_new[:-1]+freq_new[1:])/2,dt,p0=[0.0,dt.mean()],sigma=dterr)
-	dm,t1=popt
-	dmerr,t1err=np.diagonal(pcov)**0.5
-	t0=(dt/dterr**2).sum()/(1/dterr**2).sum()
-	t0err=1/((1/dterr**2).sum())**0.5
-	if fulloutput:
-		return [[dm,dmerr],[t1,t1err],[t0,t0err]],dt,dterr
-	else:
-		return [dm,dmerr],[t1,t1err],[t0,t0err]
+	tpdata-=tpdata.mean(1).reshape(-1,1)
+	tpdata/=tpdata.max(1).reshape(-1,1)
+	tpdata0-=tpdata0.mean(1).reshape(-1,1)
+	tpdata0/=tpdata0.max(1).reshape(-1,1)
+	f0=fft.rfft(tpdata0,axis=1)[rchan,:nb]
+	d0=fft.irfft(f0,axis=1)
+	f=fft.rfft(tpdata,axis=1)[rchan,:nb]
+	d=fft.irfft(f,axis=1)
+	tmpnum=np.argmax(fft.irfft(f0*f.conj(),axis=1).mean(0))
+	d0=np.concatenate((d0[:,tmpnum:],d0[:,:tmpnum]),axis=1)
+	f0=fft.rfft(d0,axis=1)
+	errbinnum=np.min([int(nb/6),20])
+	sr0=np.std(f0.real[:,-errbinnum:],1)
+	si0=np.std(f0.imag[:,-errbinnum:],1)
+	sr=np.std(f.real[:,-errbinnum:],1)
+	si=np.std(f.imag[:,-errbinnum:],1)
+	df=f0/f
+	err=np.sqrt((sr**2+si**2).reshape(-1,1)/np.abs(f)**2+(sr0**2+si0**2).reshape(-1,1)/np.abs(f0)**2)
+	ang=np.angle(df)
+	ang1=(ang/err**2).sum(0)/(1/err**2).sum(0)
+	err1=1/((1/err**2).sum(0))**0.5
+	fitnum=nb
+	dt0,dterr0=np.zeros(fitnum-4),np.zeros(fitnum-4)
+	for i in np.arange(4,fitnum):
+		a0=ang1[1:i]
+		e0=err1[1:i]
+		popt,pcov=so.curve_fit(lin,np.arange(1,i),a0,p0=[0.0],sigma=e0)
+		dt0[i-4]=-popt/(2*np.pi)+tmpnum/((nb-1)*2)
+		dterr0[i-4]=pcov[0,0]**0.5/(2*np.pi)
+	dt=(dt0/dterr0**2).sum(0)/(1/dterr0**2).sum(0)
+	dterr=np.sqrt((((dt0-dt)/dterr0)**2).sum()/(1/dterr0**2).sum())
+	return [dt,dterr]
 #
+freq=(freq0+freq1)/2.0
+bandwidth=freq1-freq0
+channel_width=bandwidth/nchan
 if args.freqrange:
 	freq_start,freq_end=np.float64(args.freqrange.split(','))
 	chanstart,chanend=np.int16(np.round((np.array([freq_start,freq_end])-freq)/channel_width+0.5*nchan))
 freq_new=np.linspace(freq_start,freq_end,nchan_new+1)
 freq=np.linspace(freq_start,freq_end,nchan0+1)
 d1=ld.ld(name+'.ld')
-if args.toa:
-	d1.write_shape([nchan_new,nsub_new,2,1])
-else:
-	d1.write_shape([1,nsub_new,8,1])
+d1.write_shape([1,nsub_new,2,1])
 if nsub_new>1:
-	p0=np.zeros([nsub_new,3,2])
+	p0=np.zeros([nsub_new,2])
 	phase0=int(info['phase0'])
 	sub_nperiod=int(info['sub_nperiod'])*np.ones(nperiod,dtype=np.float64)
 	sub_nperiod[-1]=int(info['sub_nperiod_last'])
 	middle=sub_nperiod.cumsum()-sub_nperiod/2
 	time0=np.linspace(0,np.float64(info['length']),nperiod)
-	phase1=pm.psr_timing(pr.psr(info['psr_name']),te.times(te.time(np.float64(info['stt_date'])*np.ones(nperiod,dtype=np.float64),np.float64(info['stt_sec'])+time0)),(np.float64(info['freq_start'])+np.float64(info['freq_end']))/2).phase
+	psr=pm.psr_timing(pr.psr(info['psr_name']),te.times(te.time(np.float64(info['stt_date'])*np.ones(nperiod,dtype=np.float64),np.float64(info['stt_sec'])+time0)),np.float64(info['freq_end']))
+	phase1=psr.phase
 	middle_time=np.interp(middle,phase1.date-phase0+phase1.second,time0)[sub_start:sub_end]
+	psr1=pm.psr_timing(pr.psr(info['psr_name']),te.times(te.time(np.float64(info['stt_date'])*np.ones(nsub_new,dtype=np.float64),np.float64(info['stt_sec'])+middle_time)),np.float64(info['freq_end']))
+	vchange=psr1.vchange
 	for s in np.arange(nsub_new):
 		tpdata0=np.zeros([nchan_new,nbin])
 		data=d.read_period(s+sub_start)[chanstart:chanend,:,0]
+		data,ddm0,ddm0err=dmcor(data,freq[:-1]*vchange[s],rchan)
 		for i in np.arange(chanend-chanstart):
 			if (i+chanstart) in zchan: continue
 			chan0,chan1=np.sum(freq[i]-freq_new>0),np.sum(freq[i+1]-freq_new>0)
@@ -244,13 +243,9 @@ if nsub_new>1:
 				tpdata0[chan0-1]+=data[i]
 			else:
 				parser.error('The unexpected error.')
-		if args.toa:
-			p0[s],dt,dterr=poa(tpdata0,tpdata,fulloutput=True)
-			d1.write_period(np.array([dt,dterr]).T,s)
-		else:
-			p0[s]=poa(tpdata0,tpdata)
-			d1.write_period(np.array([np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time[s],*p0[s].reshape(-1)]),s)
-		print(np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time[s],*p0[s].reshape(-1))
+		p0[s]=poa(tpdata0,tpdata)
+		d1.write_period(np.array([np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time[s],p0[s]]),s)
+		print(np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time[s],p0[s])
 else:
 	tpdata0=np.zeros([nchan_new,nbin])
 	phase0=int(info['phase0'])
@@ -261,8 +256,9 @@ else:
 	else: middle=(sub_nperiod_cumsum[sub_start-1]+sub_nperiod_cumsum[sub_end])/2
 	time0=np.linspace(0,np.float64(info['length']),12)
 	phase1=pm.psr_timing(pr.psr(info['psr_name']),te.times(te.time(np.float64(info['stt_date'])*np.ones(12,dtype=np.float64),np.float64(info['stt_sec'])+time0)),(np.float64(info['freq_start'])+np.float64(info['freq_end']))/2).phase
-	middle_time=np.interp(middle,phase1.date-phase0+phase1.second,time0)[sub_start:sub_end]
+	middle_time=np.interp(middle,phase1.date-phase0+phase1.second,time0)
 	data=d.period_scrunch()[chanstart:chanend,:,0]
+	data,ddm0,ddm0err=dmcor(data,freq[:-1]*vchange[s],rchan)
 	for i in np.arange(chanend-chanstart):
 		if (i+chanstart) in zchan: continue
 		chan0,chan1=np.sum(freq[i]-freq_new>0),np.sum(freq[i+1]-freq_new>0)
@@ -275,17 +271,10 @@ else:
 			tpdata0[chan0-1]+=data[i]
 		else:
 			parser.error('The unexpected error.')
-	if args.toa:
-		p0,dt,dterr=poa(tpdata0,tpdata,fulloutput=True)
-		d1.write_period(np.array([dt,dterr]).T,s)
-	else:
-		p0=poa(tpdata0,tpdata)
-		d1.write_period(np.array([np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time,*p0[s].reshape(-1)]),s)
-	print(np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time,*p0.reshape(-1))
+	p0=poa(tpdata0,tpdata)
+	d1.write_period(np.array([np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time,p0]),s)
+	print(np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time,p0)
 #
-#print(p0)
-if args.toa:
-	info['ToA']=p0.reshape(-1)
 info['mode']='ToA'
 d1.write_info(info)
-#!/usr/bin/env python
+

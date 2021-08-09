@@ -8,7 +8,7 @@ class psr:
 	def __init__(self,name,parfile=False,glitch=False):
 		self.name=name
 		self.readpara(parfile=parfile,glitch=glitch)
-		if self.units=='tdb':
+		if self.units=='TDB':
 			self.change_units()
 		if 'raj' in self.paras: self.cal_pos()
 		elif 'elong' in self.paras: self.cal_pos_ecl()
@@ -62,6 +62,8 @@ class psr:
 			elif para not in all_paras:
 				raise Exception('The parameter '+para+' cannot be recognized.')
 			self.__setattr__(para,paraval)
+			if para in ['raj','decj','pmra','pmdec']: self.cal_pos()
+			elif para in ['elong','elat','pmelong','pmelat']: self.cal_pos_ecl()
 		else:
 			if para=='binary':
 				paradict0=eval('paras_'+self.binary)
@@ -165,7 +167,7 @@ class psr:
 			self.acc_equ=te.vector(0,0,0,center='bary',scale='si',coord='equ',unit=te.sl,type0='acc')
 	#
 	def change_units(self):
-		if self.units=='tcb':
+		if self.units=='TCB':
 			return
 		for i in self.paras:
 			if hasattr(self,i):
@@ -195,6 +197,7 @@ class psr:
 			else:
 				continue
 			if factor!=1: self.__setattr__(i,self.__getattribute__(i)*factor)
+		self.units='TCB'
 	#
 	def __str__(self):
 		string=''
@@ -211,7 +214,6 @@ class psr:
 					for k in np.arange(val.size):
 						if k==0: string+='{:12s} '.format(i.upper())
 						else: string+='{:12s} '.format('')
-						print(i,k,val,err)
 						val_str=str(val[k])
 						err_str=str(err[k])
 						string+='{:25s} {:25s}'.format(val_str,err_str)+'\n'
@@ -240,6 +242,57 @@ class psr:
 	def __repr__(self):
 		return self.__str__()
 	#
+	def tdb_par(self):
+		tmp=self.copy()
+		for i in tmp.paras:
+			if hasattr(tmp,i):
+				val=tmp.__getattribute__(i)
+			else:
+				continue
+			if i in para_glitch: pass
+			elif i in paras_p1: factor=1/te.iftek
+			elif i in paras_m1: factor=te.iftek
+			elif i in paras_m2: factor=te.iftek**2
+			elif i in paras_m3: factor=te.iftek**3
+			elif i in paras_m4: factor=te.iftek**4
+			elif i in paras_m5: factor=te.iftek**5
+			elif i in paras_m6: factor=te.iftek**6
+			elif i in paras_time:
+				factor=1
+				tmp.__setattr__(i,val.tdb())
+			elif i in paras_time_array:
+				factor=1
+				val_new=[]
+				for k in val:
+					val_new.append(k.tdb())
+				tmp.__setattr__(i,val_new)
+			elif i in paras_eph:
+				factor=1
+				tmp.__setattr__(i,te.time(val,np.zeros_like(val),scale='tcb').tdb().mjd[0])
+			else:
+				continue
+			if factor!=1: tmp.__setattr__(i,tmp.__getattribute__(i)*factor)
+		tmp.units='TDB'
+		return tmp.__str__()
+	#
+	def writepar(self,parfile):
+		tmp=self.copy()
+		if 'raj' in tmp.paras:
+			tmp.raj=tmp.raj/np.pi*12
+			if hasattr(tmp,'raj_err'): tmp.raj_err=tmp.raj_err/np.pi*12
+		if 'decj' in tmp.paras:
+			tmp.decj=tmp.decj/np.pi*180
+			if hasattr(tmp,'decj_err'): tmp.decj_err=tmp.decj_err/np.pi*180
+		if 'elong' in tmp.paras:
+			tmp.elong=tmp.elong/np.pi*180
+			if hasattr(tmp,'elong_err'): tmp.elong_err=tmp.elong_err/np.pi*180
+		if 'elat' in tmp.paras:
+			tmp.elat=tmp.elat/np.pi*180
+			if hasattr(tmp,'elat_err'): tmp.elat_err=tmp.elat_err/np.pi*180
+		p=open(parfile,'w')
+		p.write(tmp.__str__())
+		p.close()
+	#
 	def readpara(self,parfile=False,glitch=False):
 		if parfile: paras=open(self.name).read().strip().split('\n')
 		elif type(self.name) is str: paras=sp.getoutput('psrcat -e '+self.name).split('\n')
@@ -250,12 +303,15 @@ class psr:
 		if 'PSRJ' in paras_key:
 			self.name=paras['PSRJ'][0]
 			self.paras.extend(['name','psrj'])
+		elif 'NAME' in paras_key:
+			self.name=paras['NAME'][0]
+			self.paras.extend(['name','psrj'])
 		else:
 			raise Exception('No pulsar name in par file.')
 		#
 		if 'UNITS' in paras_key:
 			i=paras['UNITS']
-			self.units=i[0].lower()
+			self.units=i[0]
 			self.paras.append('units')
 		else:
 			raise Exception('No para units in par file.')
@@ -265,7 +321,7 @@ class psr:
 			ra=np.float64(i[0].split(':'))
 			lra=len(ra)
 			unit=np.array([3600,60,1])/3600/12*np.pi
-			if lra in [2,3]:
+			if lra in [1,2,3]:
 				self.raj=(ra*unit[:lra]).sum()
 				if len(i)==2:
 					self.raj_err=np.float64(i[1])/60**lra*5*np.pi
@@ -448,8 +504,8 @@ class psr:
 			self.dmmodel=0
 			if 'DMX' in paras_key:
 				i=paras['DM'].reshape(-1,4).T
-				self.dmxr1=np.array(list(map(lambda x:te.time(np.float64(x),0,scale=self.units),np.reshape(i[0],-1))))
-				self.dmxr2=np.array(list(map(lambda x:te.time(np.float64(x),0,scale=self.units),np.reshape(i[1],-1))))
+				self.dmxr1=np.array(list(map(lambda x:te.time(np.float64(x),0,scale=self.units.lower()),np.reshape(i[0],-1))))
+				self.dmxr2=np.array(list(map(lambda x:te.time(np.float64(x),0,scale=self.units.lower()),np.reshape(i[1],-1))))
 				self.dmx=np.float64(i[2]).reshape(-1)
 				self.dmx_err=np.float64(i[3]).reshape(-1)
 				self.paras.extend(['dmx','dmxr1','dmxr2'])
@@ -465,7 +521,7 @@ class psr:
 			self.dmmodel_err=np.float64(i[1])
 			self.paras.append('dmmodel')
 			i=paras['DMOFF'].reshape(-1,3).T
-			self.dmoffs_mjd=np.array(list(map(lambda x:te.time(np.float64(x),0,scale=self.units),np.reshape(i[0],-1))))
+			self.dmoffs_mjd=np.array(list(map(lambda x:te.time(np.float64(x),0,scale=self.units.lower()),np.reshape(i[0],-1))))
 			self.dmoffs=np.float64(i[1]).reshape(-1)
 			self.dmoffs_err=np.float64(i[2]).reshape(-1)
 			self.paras.extend(['dmmodel','dmoffs','dmoffs_mjd'])
@@ -653,10 +709,10 @@ class psr:
 			elif paraname in paras_float_array:
 				i=np.float64(i).reshape(-1,2).T
 			elif paraname in paras_time:
-				if (paraname in para_with_err) and (len(i)==2): i=[te.time(np.float64(i[0]),0,scale=self.units),np.float64(i[1])]
-				else: i=np.array([te.time(np.float64(i[0]),0,scale=self.units)])
+				if (paraname in para_with_err) and (len(i)==2): i=[te.time(np.float64(i[0]),0,scale=self.units.lower()),np.float64(i[1])]
+				else: i=np.array([te.time(np.float64(i[0]),0,scale=self.units.lower())])
 			elif paraname in paras_time_array:
-				i=np.array([list(map(lambda x:te.time(np.float64(x),0,scale=self.units),np.reshape(i[0],-1)))])
+				i=np.array([list(map(lambda x:te.time(np.float64(x),0,scale=self.units.lower()),np.reshape(i[0],-1)))])
 			self.__setattr__(paraname,i[0])
 			if paraname in para_with_err:
 				if len(i)==2:
@@ -670,7 +726,7 @@ class psr:
 				if (paraname in paras_float):
 					self.__setattr__(paraname,0)
 				elif (paraname in paras_time):
-					self.__setattr__(paraname,te.time(value,0,scale=self.units))
+					self.__setattr__(paraname,te.time(value,0,scale=self.units.lower()))
 				elif (paraname in paras_float_array) or (paraname in paras_time_array):
 					self.__setattr__(paraname,np.array([]))
 				elif paraname in paras_text:
@@ -706,7 +762,7 @@ class psr:
 				if paraname0 in paras_key:
 					data=np.array(np.float64(paras[paraname0])).reshape(-1)
 					if paraname in paras_float_array: para[k]=data[0]
-					elif paraname in paras_time_array: para[k]=te.time(data[0],0,scale=self.units)
+					elif paraname in paras_time_array: para[k]=te.time(data[0],0,scale=self.units.lower())
 					if data.size==2: para_err[k]==data[1]
 					elif paraname in para_with_err: print('Warning: The parameter '+paraname0+' has no error.')
 					para_count+=1
