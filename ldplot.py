@@ -105,6 +105,12 @@ def shift(y,x):
 	fftr=fft.irfft(ffts,axis=0)
 	return fftr
 #
+def shift1(y,x):
+	fftp=fft.rfft(y,axis=1)
+	ffts=fftp*np.exp(-2*np.pi*x*1j*np.arange(np.shape(fftp)[1])).reshape(1,-1)
+	fftr=fft.irfft(ffts,axis=1)
+	return fftr
+#
 fig=Figure(figsize=(40,30),dpi=80)
 fig.set_facecolor('white')
 ax=fig.add_axes([0.12,0.1,0.82,0.83])
@@ -126,7 +132,7 @@ if args.fdomain:
 	if args.norm:
 		data/=data.max(1).reshape(-1,1)
 	if args.rotation:
-		data=shift(data,args.rotation)
+		data=shift1(data,args.rotation)
 	ax.imshow(data[::-1],aspect='auto',interpolation='nearest',extent=(0,1,freq_start,freq_end),cmap='jet')
 	ax.set_ylabel('Frequency (MHz)',fontsize=30)
 	ax.set_ylim(frequency[0],frequency[1])
@@ -140,7 +146,7 @@ if args.tdomain:
 	if args.norm:
 		data/=data.max(1).reshape(-1,1)
 	if args.rotation:
-		data=shift(data,args.rotation)
+		data=shift1(data,args.rotation)
 	ax.imshow(data[::-1],aspect='auto',interpolation='nearest',extent=(0,1,subint_start,subint_end),cmap='jet')
 	ax.set_ylabel('Subint Number',fontsize=30)
 	ax.set_ylim(subint[0],subint[1])

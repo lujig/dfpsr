@@ -8,9 +8,12 @@ import scipy.optimize as so
 import time_eph as te
 import psr_read as pr
 import psr_model as pm
+import warnings as wn
+import adfunc as af
+wn.filterwarnings('ignore')
 #
 version='JigLu_20201202'
-parser=ap.ArgumentParser(prog='ldtoa',description='Get the ToA and DM of the ld file.',epilog='Ver '+version)
+parser=ap.ArgumentParser(prog='ldtoa',description='Get the relative pulse rotating phase and DM of the ld file.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("filename",help="input ld file")
 parser.add_argument('-t',dest='template',help="template ld file")
@@ -20,6 +23,8 @@ parser.add_argument('-r','--frequency_range',default=0,dest='freqrange',help='ca
 parser.add_argument('-s','--subint_range',default=0,dest='subint_range',help='calculate in the subint range (SUBINT0,SUBINT1)')
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
 parser.add_argument("-o","--output",dest="output",default="toa",help="outputfile name")
+parser.add_argument('-d',action='store_true',default=False,dest='dm_corr',help='correcting the DM deviation before calculating rotating phase')
+parser.add_argument("-n","--linear_number",dest="lnumber",type=np.int8,default=10,help="the number of frequency-domain points for linear fitting")
 args=(parser.parse_args())
 command=['ldtoa.py']
 #
@@ -87,6 +92,13 @@ if args.tscrunch:
 else:
 	nsub_new=sub_end-sub_start
 #
+if args.lnumber:
+	lnumber=args.lnumber
+	if lnumber>100 or lnumber<=2:
+		parser.error('The number of frequency-domain points for linear fitting is invalid.')
+else:
+	lnumber=10
+#
 freq0,freq1=np.float64(info['freq_start']),np.float64(info['freq_end'])
 freq00,freq10=np.float64(info0['freq_start']),np.float64(info0['freq_end'])
 if freq00>=freq1 or freq10<=freq0:
@@ -139,17 +151,42 @@ else:
 	info['history']=command
 	info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
 #
-def dmcor(data,freq,rchan):
+def shift(y,x):
+	ffts=y*np.exp(x*1j)
+	fftr=fft.irfft(ffts)
+	return fftr
+#
+dm_zone=np.max([0.1,np.float64(info['dm'])/100])
+dm_zone=np.min([0.5,dm_zone])
+#
+def dmcor(data,freq,rchan,period,output=1):
 	data=data[rchan]
 	freq=freq[rchan]
-	return data,ddm,ddmerr
+	fftdata=fft.rfft(data,axis=1)
+	tmp=np.shape(fftdata)[-1]
+	const=(1/freq**2*4148.808/period*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
+	ddm,ddmerr=af.dmdet(fftdata,const,0,dm_zone,9,prec=1e-4)
+	if output==1:
+		data=shift(fftdata,const*ddm)
+		return data,ddm,ddmerr
+	else:
+		return ddm,ddmerr
 #
 rchan=np.array(list(set(range(chanstart,chanend))-set(list(zchan))))-chanstart
-rchan0=np.array(list(set(range(nchan0))-set(list(zchan))))
 tpdata=np.zeros([nchan_new,nbin0])
-data0=d0.period_scrunch()[:,:,0]
-psr=pm.psr_timing(pr.psr(info0['psr_par']),te.times(te.time(np.float64(info0['stt_time'])+np.float64(info0['length'])/86400,0)),freq_start)
-data0,ddm,ddmerr=dmcor(data0,np.linspace(freq_start,freq_end,nchan0+1)[:-1]*psr.vchange[0],rchan0)
+data0=d0.period_scrunch()[chanstart:chanend,:,0]
+if args.dm_corr:
+	psr=pm.psr_timing(pr.psr(info0['psr_par']),te.times(te.time(np.float64(info0['stt_time'])+np.float64(info0['length'])/86400,0)),freq_start)
+	freq_real=np.linspace(freq_start,freq_end,nchan0+1)[:-1]*psr.vchange.mean()
+	if 'best_dm' in info0.keys():
+		ddm0=np.float64(info0['best_dm'])-np.float64(info0['dm'])
+		fftdata0=fft.rfft(data0,axis=1)
+		tmp=np.shape(fftdata0)[-1]
+		const=(1/freq_real[:-1]**2*4148.808/np.float64(info0['period'])*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
+		data0=shift(fftdata,const*ddm0)
+	else:
+		data0[rchan],ddm0,ddm0err=dmcor(data0,freq_real,rchan,np.float64(info0['period']))
+		print(ddm0,ddm0err,freq_real,rchan,np.float64(info0['period']),psr.vchange.mean())
 i_new=0
 nchan0=chanend-chanstart
 res=nchan0
@@ -157,9 +194,9 @@ for i in np.arange(chanstart,chanend):
 	if res>nchan_new:
 		res-=nchan_new
 		if i in zchan: continue
-		tpdata[i_new]+=data0[i]
+		tpdata[i_new]+=data0[i-chanstart]
 	else:
-		chan_data=data0[i]
+		chan_data=data0[i-chanstart]
 		if i in zchan: chan_data*=0
 		tpdata[i_new]+=chan_data*(res*1.0/nchan_new)
 		i_new+=1
@@ -193,16 +230,10 @@ def poa(tpdata0,tpdata):
 	ang=np.angle(df)
 	ang1=(ang/err**2).sum(0)/(1/err**2).sum(0)
 	err1=1/((1/err**2).sum(0))**0.5
-	fitnum=nb
-	dt0,dterr0=np.zeros(fitnum-4),np.zeros(fitnum-4)
-	for i in np.arange(4,fitnum):
-		a0=ang1[1:i]
-		e0=err1[1:i]
-		popt,pcov=so.curve_fit(lin,np.arange(1,i),a0,p0=[0.0],sigma=e0)
-		dt0[i-4]=-popt/(2*np.pi)+tmpnum/((nb-1)*2)
-		dterr0[i-4]=pcov[0,0]**0.5/(2*np.pi)
-	dt=(dt0/dterr0**2).sum(0)/(1/dterr0**2).sum(0)
-	dterr=np.sqrt((((dt0-dt)/dterr0)**2).sum()/(1/dterr0**2).sum())
+	fitnum=lnumber
+	popt,pcov=so.curve_fit(lin,np.arange(1,fitnum),ang1[1:fitnum],p0=[0.0],sigma=err1[1:fitnum])
+	dt=-popt/(2*np.pi)+tmpnum/((nb-1)*2)
+	dterr=pcov[0,0]**0.5/(2*np.pi)
 	return [dt,dterr]
 #
 freq=(freq0+freq1)/2.0
@@ -227,10 +258,22 @@ if nsub_new>1:
 	middle_time=np.interp(middle,phase1.date-phase0+phase1.second,time0)[sub_start:sub_end]
 	psr1=pm.psr_timing(pr.psr(info['psr_name']),te.times(te.time(np.float64(info['stt_date'])*np.ones(nsub_new,dtype=np.float64),np.float64(info['stt_sec'])+middle_time)),np.float64(info['freq_end']))
 	vchange=psr1.vchange
+	data1=d.period_scrunch(sub_start,sub_end)[chanstart:chanend,:,0]
+	if args.dm_corr:
+		if 'best_dm' in info.keys():
+			ddm=np.float64(info['best_dm'])-np.float64(info['dm'])
+		else:
+			ddm,ddmerr=dmcor(data1,freq[:-1]*vchange.mean(),rchan,np.float64(info['period']),output=0)
+			print(ddm,ddmerr,freq[:-1]*vchange.mean(),rchan,np.float64(info['period']),vchange)
+		print('The relative DM from the template file to data file is '+str(ddm-ddm0))
 	for s in np.arange(nsub_new):
 		tpdata0=np.zeros([nchan_new,nbin])
 		data=d.read_period(s+sub_start)[chanstart:chanend,:,0]
-		data,ddm0,ddm0err=dmcor(data,freq[:-1]*vchange[s],rchan)
+		if args.dm_corr:
+			fftdata=fft.rfft(data,axis=1)
+			tmp=np.shape(fftdata)[-1]
+			const=(1/freq[:-1]**2*4148.808/np.float64(info['period'])*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
+			data=shift(fftdata,const*ddm)
 		for i in np.arange(chanend-chanstart):
 			if (i+chanstart) in zchan: continue
 			chan0,chan1=np.sum(freq[i]-freq_new>0),np.sum(freq[i+1]-freq_new>0)
@@ -244,8 +287,8 @@ if nsub_new>1:
 			else:
 				parser.error('The unexpected error.')
 		p0[s]=poa(tpdata0,tpdata)
-		d1.write_period(np.array([np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time[s],p0[s]]),s)
-		print(np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time[s],p0[s])
+		#d1.write_period(np.array([np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time[s],p0[s]]),s)
+		print(np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time[s],*p0[s])
 else:
 	tpdata0=np.zeros([nchan_new,nbin])
 	phase0=int(info['phase0'])
@@ -258,7 +301,7 @@ else:
 	phase1=pm.psr_timing(pr.psr(info['psr_name']),te.times(te.time(np.float64(info['stt_date'])*np.ones(12,dtype=np.float64),np.float64(info['stt_sec'])+time0)),(np.float64(info['freq_start'])+np.float64(info['freq_end']))/2).phase
 	middle_time=np.interp(middle,phase1.date-phase0+phase1.second,time0)
 	data=d.period_scrunch()[chanstart:chanend,:,0]
-	data,ddm0,ddm0err=dmcor(data,freq[:-1]*vchange[s],rchan)
+	data,ddm,ddmerr=dmcor(data,freq[:-1]*vchange[s],rchan)
 	for i in np.arange(chanend-chanstart):
 		if (i+chanstart) in zchan: continue
 		chan0,chan1=np.sum(freq[i]-freq_new>0),np.sum(freq[i+1]-freq_new>0)

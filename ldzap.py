@@ -11,6 +11,7 @@ version='JigLu_20200923'
 parser=ap.ArgumentParser(prog='ldzap',description='Zap the frequency domain interference in ld file.',epilog='Ver '+version)
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
+parser.add_argument('-n',action='store_true',default=False,dest='norm',help='normalized the data at each channel')
 parser.add_argument("filename",help="input ld file")
 args=(parser.parse_args())
 #
@@ -38,6 +39,10 @@ else:
 	data=d.__read_bin_segment__(0,nperiod)[:,:,0]
 if nbin>128 or ((nbin==1)&(nperiod>128)):
 	data=fft.irfft(fft.rfft(data,axis=1)[:,:65],axis=1)
+if args.norm:
+	data-=data.mean(1).reshape(-1,1)
+	data/=data.std(1).reshape(-1,1)
+	data-=data.min()-1
 testdata=copy.deepcopy(data)
 testdata=ma.masked_where(testdata<0,testdata)
 if 'zchan' in info.keys():

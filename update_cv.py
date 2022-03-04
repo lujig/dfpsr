@@ -95,12 +95,12 @@ f.close()
 # local2gps
 a=ur.urlopen('https://crafts.bao.ac.cn/pub/fast/time/fast-hm-gps-diff.txt').readlines()
 b=np.float64(list(map(lambda x:x.decode().strip().split(),a)))
-lenb=len(b)
 t0,dt0=b.T
 t1=np.arange(t0[0],t0[-1]+1000,1000)
 dt1=np.interp(t1,t0,dt0)
 b0=ss.firwin(101,0.005)
 dt2=ss.lfilter(b0,1,dt1) 
+lenb=len(t1)
 f=open(dirname+'/conventions/'+'local2gps.txt','w')
 for i in range(lenb-100):
 	f.write(str(int(t1[i+50]))+'     '+'{:.12f}'.format(dt2[i+100])+'\n')

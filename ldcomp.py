@@ -23,7 +23,7 @@ parser.add_argument('-s','--subint_range',default=0,dest='subint',help='limit th
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
 parser.add_argument("-o","--output",dest="output",default="compress",help="outputfile name")
 args=(parser.parse_args())
-command=['compress.py']
+command=['ldcomp.py']
 #
 if not os.path.isfile(args.filename):
 	parser.error('A valid ld file name is required.')

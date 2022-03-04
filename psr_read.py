@@ -580,7 +580,7 @@ class psr:
 					self.pbdot=-self.fb1*self.pb**2/86400**2
 					self.pbdot_err=np.sqrt((self.fb1_err*self.pb**2)**2+(2*self.fb1*self.pb*self.pb_err)**2)/86400**2
 			if self.binary[:2]=='BT' or self.binary[:2]=='DD' or self.binary=='MSS':
-				if not (self.om and self.t0): 
+				if not (('om' in self.paras) and ('t0' in self.paras)): 
 					if ('tasc' in self.paras): raise Exception('There is no T0 and OM parameters for '+self.binary+' binary model, please use ELL type binary model.')
 					else: raise Exception('There is no T0 and OM parameters for '+self.binary+' binary model.')
 				if self.binary=='DD':
@@ -772,8 +772,8 @@ class psr:
 #
 all_paras={'p0', 'pmra', 'pmdec', 'pmrv', 'f0', 'p2', 'p1', 'pmra2', 'pmdec2', 'f1', 'p3', 'f2', 'f3', 'f4', 'f5', 'dm', 'cm', 'dmmodel', 'dmoffs', 'dmx', 'dm_s1yr', 'dm_c1yr', 'fddc', 'fd', 'raj', 'decj', 'px' ,'cmidx', 'fddi', 'rm', 'pepoch', 'posepoch', 'dmepoch', 'dmoffs_mjd', 'dmxr1', 'dmxr2', 'name', 'dshk', 'binary','t0', 'pb', 'ecc', 'pbdot', 'a1dot', 'a1', 'omdot', 'om', 'gamma','bpjep','bpjph','bpja1','bpjec','bpjom','bpjpb', 'fb0', 'fb1', 'fb2', 'fb3', 'tasc', 'eps1', 'eps2', 'sini', 'm2', 'eps1dot', 'eps2dot', 'orbifunc', 'xpbdot', 'edot', 'kom', 'kin', 'mtot', 'a2dot', 'e2dot', 'orbpx', 'dr', 'dtheta', 'dth', 'a0', 'b0', 'om2dot', 'xomdot','afac','daop', 'pb2dot', 'ephver', 'ephem', 'dm1', 'dm2', 'dm3', 'cm1', 'cm2', 'cm3', 'glep', 'glph', 'gltd', 'glf0', 'glf1', 'glf2', 'glf0d', 'pmelong', 'pmelat', 'pmelong2', 'pmelat2'}
 # with or without error
-para_with_err={'p0', 'pmra', 'pmdec', 'pmrv', 'f0', 'p2', 'p1', 'pmra2', 'pmdec2', 'f1', 'p3', 'f2', 'f3', 'f4', 'f5', 'dm', 'cm', 'dmmodel', 'dmoffs', 'dmx', 'dm_s1yr', 'dm_c1yr', 'fddc', 'fd', 'raj', 'decj', 'px', 'cmidx', 'fddi', 'rm', 'dshk', 't0', 'pb', 'ecc', 'pbdot', 'a1dot', 'a1', 'omdot', 'om', 'gamma', 'fb0', 'fb1', 'fb2', 'fb3', 'bpjph','bpja1','bpjec','bpjom','bpjpb', 'tasc', 'eps1', 'eps2', 'sini', 'm2', 'eps1dot', 'eps2dot', 'orbifuncV','h3', 'h4','nharm','stig', 'xpbdot', 'edot', 'kom', 'kin', 'mtot', 'a2dot', 'e2dot', 'orbpx', 'dr', 'dtheta', 'dth', 'a0', 'b0', 'om2dot', 'glep', 'glph', 'gltd', 'glf0', 'glf1', 'glf2', 'glf0d', 'pmelong', 'pmelat', 'pmelong2', 'pmelat2'}
-para_without_err={'pepoch','posepoch','dmepoch','dmoffs_mjd','dmxr1','dmxr2','name', 'binary', 'orbifunc', 'bpjep', 'orbifunc', 'orbifuncT', 'xomdot','afac','daop', 'pb2dot', 'ephver', 'ephem', 'shapmax'}
+para_with_err={'p0', 'pmra', 'pmdec', 'pmrv', 'f0', 'p2', 'p1', 'pmra2', 'pmdec2', 'f1', 'p3', 'f2', 'f3', 'f4', 'f5', 'dm', 'cm', 'dmmodel', 'dmoffs', 'dmx', 'dm_s1yr', 'dm_c1yr', 'fddc', 'fd', 'raj', 'decj', 'px', 'cmidx', 'fddi', 'rm', 'dshk', 't0', 'pb', 'ecc', 'pbdot', 'a1dot', 'a1', 'omdot', 'om', 'gamma', 'fb0', 'fb1', 'fb2', 'fb3', 'bpjph','bpja1','bpjec','bpjom','bpjpb', 'tasc', 'eps1', 'eps2', 'sini', 'm2', 'eps1dot', 'eps2dot', 'orbifuncV','h3', 'h4','nharm','stig', 'xpbdot', 'edot', 'kom', 'kin', 'mtot', 'a2dot', 'e2dot', 'orbpx', 'dr', 'dtheta', 'dth', 'a0', 'b0', 'om2dot', 'glep', 'glph', 'gltd', 'glf0', 'glf1', 'glf2', 'glf0d', 'pmelong', 'pmelat', 'pmelong2', 'pb2dot', 'pmelat2', 'xomdot', 'shapmax'}
+para_without_err={'pepoch','posepoch','dmepoch','dmoffs_mjd','dmxr1','dmxr2','name', 'binary', 'bpjep', 'orbifunc', 'orbifuncT', 'afac', 'daop', 'ephver', 'ephem'}
 # tdb to tcb
 paras_p1={'p0','dshk', 'pb', 'bpjpb', 'm2', 'h3', 'mtot', 'a0', 'b0', 'a1', 'gamma', 'gltd'}
 paras_m1={'pmra','pmdec','pmrv','f0','p2', 'omdot', 'a1dot', 'eps1dot', 'eps2dot', 'edot', 'xomdot', 'pb2dot', 'fb0', 'dm', 'cm', 'px', 'glf0', 'glf0d', 'pmelong', 'pmelat'}

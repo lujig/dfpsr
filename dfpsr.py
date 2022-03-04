@@ -22,6 +22,8 @@ parser.add_argument('--verbose', action="store_true",default=False,help="print d
 parser.add_argument("filename",nargs='+',help="name of file or filelist")
 parser.add_argument("-a","--cal",dest="cal",nargs='+',help="name of calibration file or calibration filelist")
 parser.add_argument("--cal_period",dest="cal_period",default=0,type=np.float64,help="period of the calibration fits file (s)")
+parser.add_argument("--subi",action="store_true",default=False,help="take one subint as the calibration unit")
+parser.add_argument("-t","--trend",action="store_true",default=False,help="fit the calibration parameter evolution")
 parser.add_argument("-o","--output",dest="output",default="psr",help="output file name")
 parser.add_argument("-f","--frequency",dest='freqrange',default=0,help="output frequency range (MHz) in form start_freq,end_freq")
 parser.add_argument('-d','--dm',dest='dm',default=0,type=np.float64,help="dispersion measure")
@@ -55,7 +57,7 @@ def file_check(fname,notfirst=True,filetype='data'):
 	if not os.path.isfile(fname):
 		parser.error('Fits '+filetype+' name is invalid.')
 	try:
-		f=ps.open(filelist[i],mmap=True)
+		f=ps.open(fname,mmap=True)
 	except:
 		parser.error('Fits '+filetype+' is invalid.')
 	head=f['PRIMARY'].header
@@ -145,9 +147,6 @@ if args.cal:
 		noise_t0,noise_len,noiselist=np.array(noise_t0),np.array(noise_len),np.array(noiselist)
 		sorts=np.argsort(noise_t0)
 		noise_t0,noise_len,noiselist=noise_t0[sorts],noise_len[sorts],noiselist[sorts]
-		if len(noise_len)>1:
-			if np.max(np.abs((noise_len*nsblk*tsamp/86400.0+noise_t0)[:-1]-noise_t0[1:]))>(tsamp/86400.0):
-				parser.error("Noise files are not continuous.")
 else:
 	noise_mark=''
 #
@@ -255,7 +254,13 @@ if len(name)>3:
 		name=name[:-3]
 if os.path.isfile(name+'.ld'):
 	if not args.overwrite:
-		parser.error('The name of output file already existed. Please provide a new name.')
+		tmp=1
+		name0=name+'_'+str(tmp)
+		while os.path.isfile(name0+'.ld'):
+			name0=name+'_'+str(tmp)
+			tmp+=1
+		name=name0
+		#parser.error('The name of output file already existed. Please provide a new name.')
 #
 if args.reverse:
 	command.append('-r')
@@ -268,13 +273,11 @@ if args.multi:
 command=' '.join(command)
 info['history']=command
 #
-if noise_mark=='fits':
-	if args.verbose:
-		sys.stdout.write('Processing the noise file...\n')
-	noisen=np.int64(args.cal_period//tsamp)
-	noise_data=np.zeros([noisen,npol,nchan_new],dtype=np.float64)
+def deal_seg(n1,n2):
+	cumsub=0
+	noise_data=np.zeros([noisen,npol,nchan])
 	noise_cum=np.zeros(noisen)
-	for n in np.arange(noisenum):
+	for n in np.arange(n1,n2):
 		f=ps.open(noiselist[n],mmap=True)
 		fsub=f['SUBINT'].header['naxis2']
 		for i in np.arange(fsub):
@@ -282,42 +285,121 @@ if noise_mark=='fits':
 			data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
 			del f['SUBINT'].data
 			if args.reverse or (not bw_sign):
-				if nchan==chanend:
-					data=data[:,:,(nchan-chanstart-1)::-1]
-				else:
-					data=data[:,:,(nchan-chanstart-1):(nchan-chanend-1):-1]
+				data=data[:,:,::-1]
+			if args.subi:
+				noise_t=np.int64(cumsub%noisen)
+				noise_data[noise_t]+=data.mean(0)
+				noise_cum[noise_t]+=1
 			else:
-				data=data[:,:,chanstart:chanend]
-			cumsub=noise_len[:n].sum()+i
-			noise_t=np.int64(np.round((np.arange(nsblk)+cumsub*nsblk)*tsamp%args.cal_period/tsamp))
-			for k in np.arange(nsblk):
-				tmp_noise_t=noise_t[k]
-				if tmp_noise_t>=noisen:
-					continue
-				noise_data[tmp_noise_t]+=data[k]
-				noise_cum[tmp_noise_t]+=1
+				noise_t=np.int64((np.arange(nsblk)+cumsub*nsblk)*tsamp%args.cal_period//tsamp)
+				for k in np.arange(nsblk):
+					tmp_noise_t=noise_t[k]
+					if tmp_noise_t==noisen:
+						continue
+					noise_data[tmp_noise_t]+=data[k]
+					noise_cum[tmp_noise_t]+=1
+			cumsub+=1
 		f.close()
 	tmp_noise=noise_data[:,0].sum(1)/noise_cum
 	sorts=np.argsort(tmp_noise)
 	noise_data,noise_cum=noise_data[sorts],noise_cum[sorts]
 	noisen_center=np.int64(noisen//2)
-	noise_off=noise_data[3:(noisen_center-1)].sum(0)/noise_cum[3:(noisen_center-1)].sum().reshape(-1,1)
-	noise_on=noise_data[(noisen_center+2):-3].sum(0)/noise_cum[(noisen_center+2):-3].sum().reshape(-1,1)-noise_off
+	noise_off=noise_data[2:(noisen_center-1)].sum(0)/noise_cum[2:(noisen_center-1)].sum().reshape(-1,1)
+	noise_on=noise_data[(noisen_center+2):-2].sum(0)/noise_cum[(noisen_center+2):-2].sum().reshape(-1,1)-noise_off
 	noise_a12,noise_a22=noise_on[:2]
 	noise_dphi=np.arctan2(noise_on[3],noise_on[2])
 	noise_cos,noise_sin=np.cos(noise_dphi),np.sin(noise_dphi)
+	return np.array([noise_a12,noise_a22,noise_cos,noise_sin])
+#
+if noise_mark=='fits':
+	if args.verbose:
+		sys.stdout.write('Processing the noise file...\n')
+	if args.subi:
+		noisen=np.int64(args.cal_period//(tsamp*nsblk))
+	else:
+		noisen=np.int64(args.cal_period//tsamp)
+	jumps=np.abs((noise_len*tsamp/86400.0+noise_t0)[:-1]-noise_t0[1:])>(tsamp/86400.0)
+	file_nseg=jumps.sum()+1
+	jumps=np.concatenate(([0],np.where(jumps)[0]+1,[noisenum]))
+	cumlen_noise=noise_t0-noise_t0[0]
+	if args.trend:
+		if file_t0[0]<(1.25*noise_t0[0]-0.25*noise_t0[-1]) or file_t0[-1]>(1.25*noise_t0[-1]-0.25*noise_t0[0]):
+			parser.error('The file time is out of the extrapolating range.')
+		noise_time0=noise_t0[0]
+		if file_nseg>1:
+			noise_time=np.zeros(file_nseg)
+			noise_data=np.zeros([file_nseg,4,nchan])
+			for i in np.arange(file_nseg):
+				noise_data[i]=deal_seg(jumps[i],jumps[i+1])
+				noise_time[i]=(cumlen_noise[jumps[i+1]-1]+cumlen_noise[jumps[i]]+noise_len[jumps[i]]*tsamp/86400)/2
+			cal_mode='trend'
+		else:
+			if noise_len>1:
+				noise_time=(cumlen_noise[-1]+noise_len[-1]*tsamp/86400)/2
+				noise_data=np.zeros([noisenum,4,nchan])
+				for i in np.arange(noisenum):
+					noise_data[i]=deal_seg(i,i+1)
+				cal_mode='trend'
+			else:
+				sys.stdout.write('Warning: Only one file is used to do the calibration and the calibration parameters are adopted without regard to the evolution.')
+				noise_data=deal_seg(0)
+				cal_mode='single'
+		noise_data=np.polyfit(noise_time,noise_data.reshape(file_nseg,-1),1).reshape(2,4,nchan)
+	else:
+		noise_data=np.zeros([file_nseg,4,nchan])
+		for i in np.arange(file_nseg):
+			noise_data[i]=deal_seg(jumps[i],jumps[i+1])
+		noise_data=noise_data.mean(0)
+		cal_mode='single'
 elif noise_mark=='ld':
-	noise_a12,noise_a22,noise_cos,noise_sin=noise.read_period(0)[chanstart:chanend,0].T
+	if noise_info['cal_mode']=='trend':
+		noise_time0=np.float64(noise_info['stt_time'])
+		noise_time=np.float64(noise_info['seg_time'])
+		if file_t0[0]<((1.25*noise_time[0]-0.25*noise_time[-1])+noise_time0) or file_t0[-1]>((1.25*noise_time[-1]-0.25*noise_time[0])+noise_time0):
+			parser.error('The file time is out of the extrapolating range.')
+		noise_data=noise.read_data.reshape(nchan,2,4).transpose(1,2,0)
+	elif noise_info['cal_mode']=='seg':
+		noise_time0=np.float64(noise_info['stt_time'])
+		noise_time=np.float64(noise_info['seg_time'])
+		noise_time_judge=((noise_time+noise_time0-file_t0[0])>(-2/24))&((noise_time+noise_time0-file_t0[-1])<(2./24))
+		noise_time_index=np.arange(len(noise_time))[noise_time_judge]
+		nseg=len(noise_time_index)
+		if nseg==0:
+			parser.error('No valid calibration segment closed to the observation data.')
+		elif nseg==1:
+			if args.trend:
+				sys.stdout.write('Warning: The calibration file has only one segment and the calibration parameters are adopted without regard to the evolution.\n')
+			noise_data=noise.read_period(noise_time_index[0]).reshape(nchan,4).T
+			cal_mode='single'
+		elif args.trend:
+			noise_data=np.zeros([len(noise_time_index),4,nchan])
+			for i in np.arange(len(noise_time_index)):
+				noise_data[i]=noise.read_period(noise_time_index[i]).reshape(nchan,4).T
+			if file_t0[0]<((1.25*noise_time[noise_time_index[0]]-0.25*noise_time[noise_time_index[-1]])+noise_time0) or file_t0[-1]>((1.25*noise_time[noise_time_index[-1]]-0.25*noise_time[noise_time_index[0]])+noise_time0):
+				sys.stdout.write('Warning: The file time of effective calibration segments are out of the extrapolating range and the calibration parameters are adopted without regard to the evolution.')
+				noise_data=noise_data.mean(0)
+				cal_mode='single'
+			else:
+				noise_data=np.polyfit(noise_time[noise_time_judge],noise_data[noise_time_judge].reshape(nseg,-1),1).reshape(2,4,nchan)
+				cal_mode='trend'
+		else:
+			cal_mode='single'
+			noise_data=np.zeros([len(noise_time_index),4,nchan])
+			for i in np.arange(len(noise_time_index)):
+				noise_data[i]=noise.read_period(noise_time_index[i]).reshape(nchan,4).T
+			noise_data=noise_data.mean(0)
+	else:
+		parser.error('The calibration file mode is unknown.')
 if args.cal:
-	info['cal']=list(map(str,np.array([noise_a12,noise_a22,noise_cos,noise_sin]).T.reshape(-1)))
-	noise_a12=np.where(noise_a12>0,1./noise_a12,0)
-	noise_a22=np.where(noise_a22>0,1./noise_a22,0)
-	noise_a1a2=noise_a12*noise_a22
-	noise_a1a2=np.sqrt(noise_a1a2)
-	noise_cos=noise_cos*noise_a1a2
-	noise_sin=noise_sin*noise_a1a2
-	noise_a1p2=(noise_a12+noise_a22)/2.0
-	noise_a1m2=(noise_a12-noise_a22)/2.0
+	info['cal_mode']=cal_mode
+	info['cal']=list(map(str,noise_data.reshape(-1)))
+	if cal_mode=='single':
+		noise_a12,noise_a22,noise_cos,noise_sin=noise_data
+		noise_a12=np.where(noise_a12>0,1./noise_a12,0)
+		noise_a22=np.where(noise_a22>0,1./noise_a22,0)
+		noise_a1a2=np.sqrt(noise_a12*noise_a22)
+		noise_cos=noise_cos*noise_a1a2
+		noise_sin=noise_sin*noise_a1a2
 #
 if args.verbose:
 	sys.stdout.write('Constructing the output file...\n')
@@ -336,8 +418,6 @@ delay=transline_delay+light_delay-gps_delay-roach_delay
 stt_time=info['stt_time']
 end_time=stt_time+tsamp*nbin0/86400.0+60./86400
 stt_time-=60./86400
-stt_time=str(int(stt_time))+str(stt_time%1)[1:]
-end_time=str(int(end_time))+str(end_time%1)[1:]
 time0=file_time[0]
 if args.period or (not pepoch):
 	if args.period:
@@ -422,24 +502,11 @@ info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
 d.write_shape([nchan_new,info['nsub'],nbin,npol])
 #
 def write_data(ldfile,data,startbin,channum,lock=0):
-	if args.cal:
-		if pol_type=='AABBCRCI':
-			a12,a22,ncos,nsin=noise_a12[channum],noise_a22[channum],noise_cos[channum],noise_sin[channum]
-			aa,bb,cr,ci=data
-			aa0,bb0,cr0,ci0=a12*aa,a22*bb,ncos*cr+nsin*ci,-nsin*cr+ncos*ci
-			i,q,u,v=aa0+bb0,aa0-bb0,cr0*2,ci0*2
-			data=np.array([i,q,u,v])
-		elif pol_type=='IQUV':
-			a1p2,a1m2,ncos,nsin=noise_a1p2[channum],noise_a1m2[channum],noise_cos[channum],noise_sin[channum]
-			i,q,u,v=data
-			i,q,u,v=a1p2*i-a1m2*q,a1p2*q-a1m2*i,ncos*u+nsin*v,-nsin*u+ncos*v
-			data=np.array([i,q,u,v])
 	if args.multi: lock.acquire()
 	d.__write_chanbins_add__(data.T,startbin,channum)
 	if args.multi: lock.release()
 #
-def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True,lock=0):
-	data=np.concatenate((np.zeros([2,npol,nchan]),data,np.zeros([2,npol,nchan])),axis=0).transpose(2,1,0)
+def gendata(cums,data,tpsub=0,tpsubn=0,last=False,first=True,lock=0):
 	if args.reverse or (not bw_sign):
 		if nchan==chanend:
 			data=data[(nchan-chanstart-1)::-1]
@@ -448,9 +515,9 @@ def gendata(cums,nsub,data,tpsub=0,tpsubn=0,last=False,first=True,lock=0):
 	else:
 		data=data[chanstart:chanend]
 	if args.period:
-		dt=np.array([np.arange(nsblk*cums-1,nsblk*cums+nsub+1)*tsamp]*nchan_new)
+		dt=np.array([np.arange(nsblk*cums-2,nsblk*cums+nsblk+2)*tsamp]*nchan_new)
 	else:
-		dt=np.arange(nsblk*cums-2,nsblk*cums+nsub+2)/nbin0*2-1
+		dt=np.arange(nsblk*cums-2,nsblk*cums+nsblk+2)/nbin0*2-1
 	for f in np.arange(nchan_new):
 		if f+chanstart in zchan: continue
 		if args.period:
@@ -541,6 +608,7 @@ if args.verbose:
 	sys.stdout.write('Dedispersing and folding the data...\n')
 #
 def dealdata(filelist,n,lock=0):
+	global noise_a12,noise_a22,noise_cos,noise_sin
 	if args.verbose:
 		if args.multi: lock.acquire()
 		sys.stdout.write('Processing the '+str(n+1)+'th fits file...\n')
@@ -567,7 +635,26 @@ def dealdata(filelist,n,lock=0):
 			dtmp=f['SUBINT'].data[i]
 			data=np.int16(dtmp['DATA'].reshape(nsblk,npol,nchan)*dtmp['dat_scl'].reshape(1,npol,nchan)+dtmp['dat_offs'].reshape(1,npol,nchan))
 			del f['SUBINT'].data
-			tpsub,tpsubn=gendata(cumsub,nsblk,data,tpsub,tpsubn,last=(i==(fsub-1)),first=i==0,lock=lock)
+			if args.cal:
+				if cal_mode=='trend':
+					dt=(np.arange(nsblk)+nsblk*cumsub)*tsamp/86400+stt_time-noise_time0
+					noise_a12,noise_a22,noise_cos,noise_sin=np.polyval(noise_data,dt.reshape(-1,1,1)).transpose(1,0,2)
+					noise_a12=np.where(noise_a12>0,1./noise_a12,0)
+					noise_a22=np.where(noise_a22>0,1./noise_a22,0)
+					noise_a1a2=np.sqrt(noise_a12*noise_a22)
+					noise_cos=noise_cos*noise_a1a2
+					noise_sin=noise_sin*noise_a1a2
+				if pol_type=='AABBCRCI':
+					aa0,bb0,cr0,ci0=noise_a12*data[:,0],noise_a22*data[:,1],noise_cos*data[:,2]+noise_sin*data[:,3],-noise_sin*data[:,2]+noise_cos*data[:,3]
+					data=np.zeros([nchan,npol,nsblk+4])
+					data[:,0,2:-2],data[:,1,2:-2],data[:,2,2:-2],data[:,3,2:-2]=(aa0+bb0).T,(aa0-bb0).T,(2*cr0).T,(2*ci0).T
+				elif pol_type=='IQUV':
+					noise_a1p2=(noise_a12+noise_a22)/2.0
+					noise_a1m2=(noise_a12-noise_a22)/2.0
+					ii,qq,uu,vv=noise_a1p2*data[:,0]-noise_a1m2*data[:,1],noise_a1p2*data[:,1]-noise_a1m2*data[:,0],noise_cos*data[:,2]+noise_sin*data[:,3],-noise_sin*data[:,2]+noise_cos*data[:,3]
+					data=np.zeros([nchan,npol,nsblk+4])
+					data[:,0,2:-2],data[:,1,2:-2],data[:,2,2:-2],data[:,3,2:-2]=ii.T,qq.T,uu.T,vv.T
+			tpsub,tpsubn=gendata(cumsub,data,tpsub,tpsubn,last=(i==(fsub-1)),first=i==0,lock=lock)
 		f.close()
 	gc.collect()
 	if args.verbose:

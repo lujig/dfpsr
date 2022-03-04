@@ -22,7 +22,7 @@ ldplot.py:
 	ldplt.py [-f] [-t] [-p] [-b PHASE_RANGE] [-r FREQ_RANGE] [-s SUBINT_RANGE] filename
 
 ldcal.py:
-	Obtain the calibration ld file with periodic noise fits file.
+	Obtain the calibration ld file with periodic noise fits files or calibration ld file fragments.
 
 	ldcal.py [--cal_period CAL_PERIOD] filename [filename ...]
 
@@ -52,6 +52,9 @@ psr_read.py:
 
 psr_timing.py:
 	Provide a class to calculate the pulse phase of a pulsar with a given time and a given frequency.
+	
+update_cv.py
+	Update the time-depending infomation such like the clock correction data files.
 
 Dependence: 
 
