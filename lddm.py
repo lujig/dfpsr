@@ -21,8 +21,8 @@ parser.add_argument('-n',action='store_true',default=False,dest='norm',help='nor
 parser.add_argument('-t',action='store_true',default=False,dest='text',help='only print the result in text-form instead of plot')
 parser.add_argument('-f',default='',dest='file',help='output the results into a file')
 parser.add_argument('-m',action='store_true',default=False,dest='modify',help='add a parameter best_dm in the info of ld file')
-parser.add_argument('-d','--dm_center',dest='dm',default=0,type=np.float64,help="dispersion measure")
-parser.add_argument('-i','--dm_zone',dest='zone',default=0,type=np.float64,help="dispersion measure")
+parser.add_argument('-d','--dm_center',dest='dm',default=0,type=np.float64,help="center of the fitting dispersion measure")
+parser.add_argument('-i','--dm_zone',dest='zone',default=0,type=np.float64,help="total range of the fitting dispersion measure")
 parser.add_argument('-o','--polynomial_order',default=0,dest='n',type=int,help='fit the dm-maxima curve with Nth order polynomial')
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
 parser.add_argument('-p','--precision',default=0,dest='prec',type=np.float64,help='fitting precision of the dm')
@@ -129,6 +129,7 @@ for psr_name in psrlist:
 			freq=freq0[chan]
 		else:
 			freq=freq0
+			chanstart,chanend=0,nchan
 			chan=[]
 		#
 		if args.subint:

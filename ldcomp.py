@@ -134,7 +134,11 @@ else:
 #i
 if args.dm is not np.inf:
 	dmmodi=True
+	new_dm=args.dm
 	command.append('-d '+str(args.dm))
+elif 'best_dm' in info.keys():
+	dmmodi=True
+	new_dm=np.float64(info['best_dm'])
 else:
 	dmmodi=False
 command=' '.join(command)
@@ -174,10 +178,10 @@ if dmmodi:
 		dm_old=np.float64(info['dm'])
 	else:
 		dm_old=0
-	disp_time=1/np.linspace(freq0,freq1,nchan0)**2*np.float64(args.dm-dm_old)*4148.808
+	disp_time=1/np.linspace(freq0,freq1,nchan0)**2*np.float64(new_dm-dm_old)*4148.808
 	disp=disp_time*np.pi*2.0/np.float64(info['period'])/nperiod
 	disp=disp-np.min(disp)
-	info['dm']=args.dm
+	info['dm']=new_dm
 res=nchan0
 tpdata=np.zeros([nperiod,nbin,npol_new])
 i_new=0

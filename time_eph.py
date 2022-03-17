@@ -499,6 +499,14 @@ class time:
 			second=self.second%unit
 			return time(date,second,'unix',unit)			
 	#
+	def unix2local(self):
+		if self.scale=='unix':
+			unit=86400
+			date,second=np.divmod(self.date,86400)
+			date+=40587
+			second=np.float64(second)+self.second
+			return time(date,second,'unix',unit)			
+	#
 	def local2utc(self):
 		if self.scale=='local':
 			f=open(dirname+'/conventions/'+'local2gps.txt')
