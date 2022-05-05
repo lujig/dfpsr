@@ -35,13 +35,14 @@ errorfile=[]
 filedict={}
 for i in filelist:
 	if not os.path.isfile(i):
-		parser.error(i+'is unexist.')
+		parser.error(i+' is unexist.')
 	else:
 		try:
 			filei=ld.ld(i)
-			psr_name=filei.read_para('psr_name')
-			if psr_name in filedict.keys(): filedict[psr_name].append(i)
-			else: filedict[psr_name]=[i]
+			psr_par=filei.read_para('psr_par')
+			psr_name=pr.psr(psr_par).name
+			if psr_name in filedict.keys(): filedict[psr_name].append([i,psr_par])
+			else: filedict[psr_name]=[[i,psr_par]]
 		except:
 			errorfile.append(i)
 if errorfile:
@@ -78,13 +79,15 @@ if args.modify:
 command=' '.join(command)
 #
 if not args.text:
+	if args.prec:
+		parser.error('The precision of the visualized result cannot be reset.')
 	if len(psrlist)>0:
 		if len(psrlist)>1 or len(filedict[psrlist[0]])>1:
 			parser.error('The visualized results cannot be manifested for multi-files.')
 #
 for psr_name in psrlist:
-	psr_para=pr.psr(psr_name)
-	for filename in filedict[psr_name]:
+	for filename,psr_par in filedict[psr_name]:
+		psr_para=pr.psr(psr_par)
 		d=ld.ld(filename)
 		info=d.read_info()
 		if 'compressed' in info.keys():
@@ -133,11 +136,13 @@ for psr_name in psrlist:
 			chan=[]
 		#
 		if args.subint:
-			subint=np.float64(args.subint.split(','))
+			subint=np.int64(args.subint.split(','))
+			if subint[1]<0:
+				subint[1]=subint[1]+nsub
 			if len(subint)!=2:
 				parser.error('A valid subint range should be given.')
 			if subint[0]>subint[1]:
-				parser.error("Starting subint larger than ending subint.")
+				parser.error("Starting subint is larger than ending subint.")
 			subint_start=max(int(subint[0]),0)
 			subint_end=min(int(subint[1]+1),nsub)
 		else:
@@ -201,7 +206,6 @@ for psr_name in psrlist:
 			maxima[maxima==0]=1
 			data1/=maxima.reshape(-1,1)
 		#
-		#
 		if not args.text: 
 			ax2.imshow(data1[::-1],aspect='auto',interpolation='nearest',extent=(0,1,freq_start0,freq_end0),cmap='jet')
 			if args.frequency:
@@ -242,7 +246,7 @@ for psr_name in psrlist:
 		if dmerr>0:
 			ndigit=int(-np.log10(dmerr))+2
 			if args.file:
-				output.write(psr_name+'  '+filename+' DM_0='+str(dm0)+', Best DM='+str(np.round(dmmax+dm0,ndigit))+'+-'+str(np.round(dmerr,ndigit))+'\n')
+				output.write(psr_para.name+'  '+filename+' DM_0='+str(dm0)+', Best DM='+str(np.round(dmmax+dm0,ndigit))+'+-'+str(np.round(dmerr,ndigit))+'\n')
 			if args.modify:
 				info['best_dm']=[dmmax+dm0,dmerr]
 				if 'history' in info.keys():
@@ -273,10 +277,10 @@ for psr_name in psrlist:
 					ax1.plot([0,1],[freq_start,freq_start],'k--')
 					ax1.plot([0,1],[freq_end,freq_end],'k--')
 			else:
-				print(psr_name+'  '+filename+' DM_0='+str(dm0)+', Best DM='+str(np.round(dmmax+dm0,ndigit))+'+-'+str(np.round(dmerr,ndigit)))
+				print(psr_para.name+'  '+filename+' DM_0='+str(dm0)+', Best DM='+str(np.round(dmmax+dm0,ndigit))+'+-'+str(np.round(dmerr,ndigit)))
 		else:
 			if not args.text: ax.text(dm0+ddm,y0*0.95+y1*0.05,'The best DM cannot be found',horizontalalignment='center',verticalalignment='bottom',fontsize=25)
-			else: print('The best DM of file '+filename+' for pulsar '+psr_name+' cannot be found.')
+			else: print('The best DM of file '+filename+' for pulsar '+psr_para.name+' cannot be found.')
 		#
 		if not args.text:
 			ax2.set_ylim(freq_start0,freq_end0)

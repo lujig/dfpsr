@@ -12,6 +12,7 @@ parser=ap.ArgumentParser(prog='ldzap',description='Zap the frequency domain inte
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
 parser.add_argument('-n',action='store_true',default=False,dest='norm',help='normalized the data at each channel')
+parser.add_argument('-m',action='store_true',default=False,dest='mean',help='use mean value as the screening standard')
 parser.add_argument("filename",help="input ld file")
 args=(parser.parse_args())
 #
@@ -34,15 +35,17 @@ else:
 		nperiod=int(info['nsub'])
 npol=int(info['npol'])
 if nbin!=1:
-	data=d.period_scrunch()[:,:,0]
+	data0=d.period_scrunch()[:,:,0]
 else:
-	data=d.__read_bin_segment__(0,nperiod)[:,:,0]
+	data0=d.__read_bin_segment__(0,nperiod)[:,:,0]
 if nbin>128 or ((nbin==1)&(nperiod>128)):
-	data=fft.irfft(fft.rfft(data,axis=1)[:,:65],axis=1)
+	data0=fft.irfft(fft.rfft(data0,axis=1)[:,:65],axis=1)
 if args.norm:
-	data-=data.mean(1).reshape(-1,1)
+	data=data0-data0.mean(1).reshape(-1,1)
 	data/=data.std(1).reshape(-1,1)
 	data-=data.min()-1
+else:
+	data=data0
 testdata=copy.deepcopy(data)
 testdata=ma.masked_where(testdata<0,testdata)
 if 'zchan' in info.keys():
@@ -72,7 +75,10 @@ if args.zap_file:
 	zaparray[zapnum,:]=True
 	testdata.mask=zaparray
 #
-spec=testdata.std(1)
+if args.mean:
+	spec=data0.mean(1)
+else:
+	spec=data0.std(1)
 spec=spec-np.min(spec)
 spec0=np.append(0,np.append(spec.repeat(2),0))
 spec1=copy.deepcopy(spec0)

@@ -43,7 +43,7 @@ class psr:
 				if self.binary:
 					paradict=eval('paras_'+self.binary)
 					paralist=paradict['necessary']+paradict['optional']
-					if i not in paralist: raise Exception('The '+self.binary+' model does not have parameter '+para+'.')
+					if para not in paralist: raise Exception('The '+self.binary+' model does not have parameter '+para+'.')
 				else:
 					raise Exception('The parameter '+para+' is a parameter in binary model, but the pulsar '+self.name+' is not a binary pulsar.')
 			elif para in ['name',  'ephver', 'ephem', 'units']:
@@ -57,10 +57,11 @@ class psr:
 				elif para=='f2': self.p2=-paraval*self.p0**2-2*self.f1*self.p0*self.p1
 				elif para=='p3': self.f3=-paraval*self.f0**2-4*self.p2*self.f0*self.f1-2*self.p1*self.f1**2-2*self.p1*self.f0*self.f2
 				elif para=='f3': self.p3=-paraval*self.p0**2-4*self.f2*self.p0*self.p1-2*self.f1*self.p1**2-2*self.f1*self.p0*self.p2
-			elif para in paras_time:
-				paraval=te.time(paraval,0,scale=self.units)
 			elif para not in all_paras:
 				raise Exception('The parameter '+para+' cannot be recognized.')
+			if para in paras_time:
+				if type(paraval) is not te.time:
+					paraval=te.time(paraval,0,scale=self.units.lower())
 			self.__setattr__(para,paraval)
 			if para in ['raj','decj','pmra','pmdec']: self.cal_pos()
 			elif para in ['elong','elat','pmelong','pmelat']: self.cal_pos_ecl()
@@ -103,6 +104,16 @@ class psr:
 			elif para in ['dmepoch','posepoch']:
 				paraval=self.pepoch
 			self.__setattr__(para,paraval)				
+	#
+	def __eq__(self,other):
+		if type(other) is not psr:
+			return False
+		if other.paras!=self.paras:
+			return False
+		for i in self.paras:
+			if self.__getattribute__(i)!=other.__getattribute__(i):
+				return False
+		return True
 	#
 	def cal_pos(self):
 		alpha=self.raj
@@ -203,7 +214,9 @@ class psr:
 		string=''
 		for i in self.paras:
 			if not hasattr(self,i): continue
-			if i in para_with_err:
+			if i=='name':
+				string+='{:12s} {:25s}'.format('PSRJ',self.__getattribute__(i))+'\n'
+			elif i in para_with_err:
 				val=self.__getattribute__(i)
 				if type(val) is te.time:
 					val=val.mjd
@@ -302,10 +315,10 @@ class psr:
 		self.paras=[]
 		if 'PSRJ' in paras_key:
 			self.name=paras['PSRJ'][0]
-			self.paras.extend(['name','psrj'])
+			self.paras.extend(['name'])
 		elif 'NAME' in paras_key:
 			self.name=paras['NAME'][0]
-			self.paras.extend(['name','psrj'])
+			self.paras.extend(['name'])
 		else:
 			raise Exception('No pulsar name in par file.')
 		#
@@ -497,7 +510,7 @@ class psr:
 			else:
 				print('Warning: The parameter dm has no error.')
 				self.dm_err=0
-			self.paras.extend(['dm','dm0'])
+			self.paras.extend(['dm'])
 			self.deal_para('dm1',paras,paras_key)
 			self.deal_para('dm2',paras,paras_key,err_case=['dm1' not in self.paras],err_exc=['The parameter DM2 is in parfile without DM1.'])
 			self.deal_para('dm3',paras,paras_key,err_case=['dm2' not in self.paras],err_exc=['The parameter DM3 is in parfile without DM2.'])
@@ -686,7 +699,7 @@ class psr:
 		self.deal_para('ephver',paras,paras_key,exce='Warning: No parameter version in the parfile.', value='2')
 		self.deal_para('ephem',paras,paras_key,exce='Warning: No ephemris version in the parfile.', value='DE405')
 		self.deal_para('clk',paras,paras_key,value='TT')
-		self.unused_paras=set(paras_key)-set(map(lambda x: x.upper(),self.paras))
+		self.unused_paras=set(paras_key)-set(map(lambda x: x.upper(),self.paras))-set(['PSRJ'])
 		if len(self.unused_paras)>=2: print('Warning: The parameters '+', '.join(list(self.unused_paras))+' in the parfile are not used.')
 		elif len(self.unused_paras)==1: print('Warning: The parameter '+', '.join(list(self.unused_paras))+' in the parfile is not used.')
 	#

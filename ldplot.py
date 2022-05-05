@@ -6,6 +6,7 @@ from matplotlib.figure import Figure
 import argparse as ap
 import os,time,ld,sys
 import warnings as wn
+import adfunc as af
 #
 version='JigLu_20200930'
 parser=ap.ArgumentParser(prog='ldplot',description='Plot the ld file. Press \'s\' in figure window to save figure.',epilog='Ver '+version)
@@ -78,7 +79,9 @@ else:
 	polar=0
 #
 if args.subint:
-	subint=np.float64(args.subint.split(','))
+	subint=np.int64(args.subint.split(','))
+	if subint[1]<0:
+		subint[1]+=nsub
 	if len(subint)!=2:
 		parser.error('A valid subint range should be given.')
 	if subint[0]>subint[1]:
@@ -155,23 +158,8 @@ if args.profile:
 	data=d.chan_scrunch(chan,subint_start,subint_end).sum(0)
 	if args.n:
 		data-=np.polyval(np.polyfit(np.arange(nbin),data,args.n),np.arange(nbin))
-	bins,mn=10,nbin/10
-	stat,val,tmp=ax.hist(data[:,0],bins)
-	while stat.max()>mn and 2*bins<mn:
-		bins*=2
-		stat,val,tmp=ax.hist(data[:,0],bins)
-	val=(val[1:]+val[:-1])/2.0
-	argmaxstat=np.argmax(stat)
-	if argmaxstat==0:
-		base=data[(data[:,0]>(val[1]*-0.5+val[0]*1.5))&(data[:,0]<(val[1]*0.5+val[0]*0.5))].mean(0)
-	elif argmaxstat==1:
-		poly=np.polyfit(val[:3],stat[:3],2)
-		#base=-poly[1]/poly[0]/2.0
-		base=data[(data[:,0]>(-poly[1]/poly[0]/2.0-(val[1]-val[0])*0.5))&(data[:,0]<(-poly[1]/poly[0]/2.0+(val[1]-val[0])*0.5))].mean(0)
-	else:
-		poly=np.polyfit(val[(argmaxstat-2):(argmaxstat+3)],stat[(argmaxstat-2):(argmaxstat+3)],2)
-		#base=-poly[1]/poly[0]/2.0
-		base=data[(data[:,0]>(-poly[1]/poly[0]/2.0-(val[1]-val[0])*0.5))&(data[:,0]<(-poly[1]/poly[0]/2.0+(val[1]-val[0])*0.5))].mean(0)
+	base,pos=af.baseline(data[:,0],pos=True)
+	base=data[pos:(pos+int(nbin/10))].mean(0)
 	data-=base
 	data/=np.max(data[:,0])
 	if args.rotation:

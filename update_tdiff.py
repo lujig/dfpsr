@@ -52,8 +52,8 @@ t1=t0[jt0]
 dt1=dt0[jt0]
 if len(t1)<20:	print('All present clock data have been included in the clock-difference file.'); exit()
 lt=len(t1)
-t1a=t1[:int(lt//10*10)].reshape(-1,10).mean(1)
-dt1a=dt1[:int(lt//10*10)].reshape(-1,10)
+t1a=t1[:int(lt//150*150)].reshape(-1,150).mean(1)
+dt1a=dt1[:int(lt//150*150)].reshape(-1,150)
 jj=(np.max(dt1a,1)-np.min(dt1a,1))<1e-5
 #dt1b=np.polyval(np.polyfit(t1a[jj],dt1a[jj].mean(1),3),t1)
 dt1b=np.interp(t1,t1a[jj],dt1a[jj].mean(1))

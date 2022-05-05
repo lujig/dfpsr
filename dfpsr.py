@@ -23,6 +23,7 @@ parser.add_argument("filename",nargs='+',help="name of file or filelist")
 parser.add_argument("-a","--cal",dest="cal",nargs='+',help="name of calibration file or calibration filelist")
 parser.add_argument("--cal_period",dest="cal_period",default=0,type=np.float64,help="period of the calibration fits file (s)")
 parser.add_argument("--subi",action="store_true",default=False,help="take one subint as the calibration unit")
+parser.add_argument("--cal_para",dest='cal_para',default='',help="the time range of the calibration file")
 parser.add_argument("-t","--trend",action="store_true",default=False,help="fit the calibration parameter evolution")
 parser.add_argument("-o","--output",dest="output",default="psr",help="output file name")
 parser.add_argument("-f","--frequency",dest='freqrange',default=0,help="output frequency range (MHz) in form start_freq,end_freq")
@@ -117,6 +118,23 @@ if len(file_len)>1:
 #
 if args.cal:
 	command.append('-a ')
+	if args.cal_para:
+		cal_para=args.cal_para.split(',')
+		if len(cal_para)==1:
+			try: tmp=np.float64(cal_para[0])
+			except: parser.error("The calculation parameter is invalid.")
+			cal_trend_eff=tmp
+			cal_seg_eff=tmp
+		elif len(cal_para)==2:
+			try: cal_trend_eff,cal_seg_eff=np.float64(cal_para)
+			except: parser.error("The calculation parameter is invalid.")
+			if cal_seg_eff>cal_trend_eff:
+				sys.stdout.write('Warning: The allowed time range of calibration file for single value need to be not more than that for trend fitting, and the former has been forced to be equal to the latter.\n')
+		else: parser.error("The calculation parameter is invalid.")
+		command.append('--cal_para '+args.cal_para)
+	else:
+		cal_trend_eff=1.5
+		cal_seg_eff=0.5
 	if len(args.cal)==1:
 		if args.cal[0][-3:]=='.ld':
 			noise_mark='ld'
@@ -191,7 +209,7 @@ elif args.psr_name or args.par_file:
 	pepoch=False
 	for line in psr_par:
 		elements=line.split()
-		if elements[0]=='PSRJ':
+		if elements[0]=='PSRJ' or elements[0]=='NAME':
 			psr_name=elements[1].strip('\n')
 			info['psr_name']=psr_name
 		elif elements[0]=='F0':
@@ -323,8 +341,11 @@ if noise_mark=='fits':
 	jumps=np.concatenate(([0],np.where(jumps)[0]+1,[noisenum]))
 	cumlen_noise=noise_t0-noise_t0[0]
 	if args.trend:
-		if file_t0[0]<(1.25*noise_t0[0]-0.25*noise_t0[-1]) or file_t0[-1]>(1.25*noise_t0[-1]-0.25*noise_t0[0]):
-			parser.error('The file time is out of the extrapolating range.')
+		if (file_t0[-1]+1/1440.)<noise_t0[0] or (file_t0[0]-1/1440.)>noise_t0[-1]:
+			parser.error('The calibration file time is out of the interpolating range.')
+		if args.cal_para:
+			if (file_t0[0]-noise_t0[0])>cal_trend_eff/24. or (noise_t0[-1]-file_t0[-1])>cal_trend_eff:
+				parser.error('The calibration file time is out of the interpolating range.')
 		noise_time0=noise_t0[0]
 		if file_nseg>1:
 			noise_time=np.zeros(file_nseg)
@@ -342,10 +363,16 @@ if noise_mark=='fits':
 				cal_mode='trend'
 			else:
 				sys.stdout.write('Warning: Only one file is used to do the calibration and the calibration parameters are adopted without regard to the evolution.')
+				if args.cal_para:
+					if (file_t0[0]-noise_t0[0])>cal_seg_eff/24. or (noise_t0[-1]-file_t0[-1])>cal_seg_eff:
+						parser.error('The calibration file time is out of the allowed range.')
 				noise_data=deal_seg(0)
 				cal_mode='single'
 		noise_data=np.polyfit(noise_time,noise_data.reshape(file_nseg,-1),1).reshape(2,4,nchan)
 	else:
+		if args.cal_para:
+			if (file_t0[0]-noise_t0[0])>cal_seg_eff/24. or (noise_t0[-1]-file_t0[-1])>cal_seg_eff:
+				parser.error('The calibration file time is out of the allowed range.')
 		noise_data=np.zeros([file_nseg,4,nchan])
 		for i in np.arange(file_nseg):
 			noise_data[i]=deal_seg(jumps[i],jumps[i+1])
@@ -357,36 +384,43 @@ elif noise_mark=='ld':
 		noise_time=np.float64(noise_info['seg_time'])
 		if file_t0[0]<((1.25*noise_time[0]-0.25*noise_time[-1])+noise_time0) or file_t0[-1]>((1.25*noise_time[-1]-0.25*noise_time[0])+noise_time0):
 			parser.error('The file time is out of the extrapolating range.')
-		noise_data=noise.read_data.reshape(nchan,2,4).transpose(1,2,0)
+		noise_data=noise.read_data().reshape(nchan,2,4).transpose(1,2,0)
+		cal_mode='trend'
 	elif noise_info['cal_mode']=='seg':
 		noise_time0=np.float64(noise_info['stt_time'])
 		noise_time=np.float64(noise_info['seg_time'])
-		noise_time_judge=((noise_time+noise_time0-file_t0[0])>(-2/24))&((noise_time+noise_time0-file_t0[-1])<(2./24))
+		noise_time_judge=((noise_time+noise_time0-file_t0[0])>(-cal_trend_eff/24.))&((noise_time+noise_time0-file_t0[-1])<(cal_trend_eff/24.))
+		noise_time_judge_1=((noise_time+noise_time0-file_t0[0])>(-cal_seg_eff/24.))&((noise_time+noise_time0-file_t0[-1])<(cal_seg_eff/24.))
 		noise_time_index=np.arange(len(noise_time))[noise_time_judge]
+		noise_time_index_1=np.arange(len(noise_time))[noise_time_judge_1]
 		nseg=len(noise_time_index)
-		if nseg==0:
+		nseg_1=len(noise_time_index_1)
+		if not nseg_1:
 			parser.error('No valid calibration segment closed to the observation data.')
-		elif nseg==1:
+		elif nseg<=1:
 			if args.trend:
 				sys.stdout.write('Warning: The calibration file has only one segment and the calibration parameters are adopted without regard to the evolution.\n')
-			noise_data=noise.read_period(noise_time_index[0]).reshape(nchan,4).T
+			noise_data=noise.read_period(noise_time_index_1[0]).reshape(nchan,4).T
 			cal_mode='single'
 		elif args.trend:
-			noise_data=np.zeros([len(noise_time_index),4,nchan])
-			for i in np.arange(len(noise_time_index)):
-				noise_data[i]=noise.read_period(noise_time_index[i]).reshape(nchan,4).T
-			if file_t0[0]<((1.25*noise_time[noise_time_index[0]]-0.25*noise_time[noise_time_index[-1]])+noise_time0) or file_t0[-1]>((1.25*noise_time[noise_time_index[-1]]-0.25*noise_time[noise_time_index[0]])+noise_time0):
-				sys.stdout.write('Warning: The file time of effective calibration segments are out of the extrapolating range and the calibration parameters are adopted without regard to the evolution.')
+			if file_t0[-1]<(noise_time[noise_time_index[0]]+noise_time0) or file_t0[0]>(noise_time[noise_time_index[-1]]+noise_time0):
+				sys.stdout.write('Warning: The file time of effective calibration segments are out of the interpolating range and the calibration parameters are adopted without regard to the evolution.')
+				noise_data=np.zeros([nseg_1,4,nchan])
+				for i in np.arange(nseg_1):
+					noise_data[i]=noise.read_period(noise_time_index_1[i]).reshape(nchan,4).T
 				noise_data=noise_data.mean(0)
 				cal_mode='single'
 			else:
-				noise_data=np.polyfit(noise_time[noise_time_judge],noise_data[noise_time_judge].reshape(nseg,-1),1).reshape(2,4,nchan)
+				noise_data=np.zeros([nseg,4,nchan])
+				for i in np.arange(nseg):
+					noise_data[i]=noise.read_period(noise_time_index[i]).reshape(nchan,4).T
+				noise_data=np.polyfit(noise_time[noise_time_judge],noise_data.reshape(nseg,-1),1).reshape(2,4,nchan)
 				cal_mode='trend'
 		else:
 			cal_mode='single'
-			noise_data=np.zeros([len(noise_time_index),4,nchan])
-			for i in np.arange(len(noise_time_index)):
-				noise_data[i]=noise.read_period(noise_time_index[i]).reshape(nchan,4).T
+			noise_data=np.zeros([nseg_1,4,nchan])
+			for i in np.arange(nseg_1):
+				noise_data[i]=noise.read_period(noise_time_index_1[i]).reshape(nchan,4).T
 			noise_data=noise_data.mean(0)
 	else:
 		parser.error('The calibration file mode is unknown.')

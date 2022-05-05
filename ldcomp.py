@@ -10,7 +10,6 @@ parser=ap.ArgumentParser(prog='ldcomp',description='Compress the ld file.',epilo
 parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("filename",help="input file to be compressed")
 parser.add_argument('-d',dest='dm',default=np.inf,type=np.float64,help="modify the dispersion measure to this value while compressing")
-parser.add_argument('-p',dest='period',default=np.inf,type=np.float64,help="modify the period to this value while compressing")
 parser.add_argument('-f',dest='nchan_new',default=0,type=np.int16,help="frequency scrunch to NCHAN_NEW channels")
 parser.add_argument('-F',action='store_true',default=False,dest='fscrunch',help='frequency scrunch to one channel')
 parser.add_argument('-t',dest='nsub_new',default=0,type=np.int16,help="time scrunch to NSUB_NEW subints")
@@ -19,7 +18,6 @@ parser.add_argument('-b',dest='nbin_new',default=0,type=np.int16,help="bin scrun
 parser.add_argument('-B',action='store_true',default=False,dest='bscrunch',help='bin scrunch to one bin')
 parser.add_argument('-P',action='store_true',default=False,dest='pscrunch',help='only reserve intensity')
 parser.add_argument('-r','--frequency_range',default=0,dest='freqrange',help='limit the frequency rangeFREQ0,FREQ1')
-parser.add_argument('-s','--subint_range',default=0,dest='subint',help='limit the subint range SUBINT0,SUBINT1')
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
 parser.add_argument("-o","--output",dest="output",default="compress",help="outputfile name")
 args=(parser.parse_args())
@@ -106,7 +104,7 @@ if args.zap_file:
 	if np.max(zchan)>=nchan or np.min(zchan)<0:
 		parser.error('The zapped channel number is overrange.')
 	if 'zchan' in info.keys():
-		info['zchan']=str(list(set(map(int,info['zchan'].split(','))).update(zchan)))[1:-1]
+		info['zchan']=str(list(set(map(int,info['zchan'].split(','))).union(zchan)))[1:-1]
 	else:
 		info['zchan']=str(list(zchan))[1:-1]
 	if nchan_new!=nchan:
@@ -138,7 +136,7 @@ if args.dm is not np.inf:
 	command.append('-d '+str(args.dm))
 elif 'best_dm' in info.keys():
 	dmmodi=True
-	new_dm=np.float64(info['best_dm'])
+	new_dm=np.float64(info['best_dm'])[0]
 else:
 	dmmodi=False
 command=' '.join(command)
@@ -164,11 +162,16 @@ else:
 d1.write_shape([nchan_new,nsub_new,nbin_new,npol_new])
 #
 def shift(y,x):
-	shape=np.array(y.shape)
-	fftp=fft.rfft(y.reshape(-1))
-	ffts=fftp*np.exp(x*1j*np.arange(len(fftp)))
-	fftr=fft.irfft(ffts)
-	return fftr.reshape(shape)
+	nperiod,nbin,npol=y.shape
+	if info['mode']=='subint':
+		fftp=fft.rfft(y,axis=1)
+		ffts=fftp*np.exp(x*nperiod*1j*np.arange(fftp.shape[1])).reshape(1,-1,1)
+		fftr=fft.irfft(ffts,axis=1)
+	elif info['mode']=='single':
+		fftp=fft.rfft(y.reshape(-1,npol),axis=0)
+		ffts=fftp*np.exp(x*1j*np.arange(fftp.shape[0])).reshape(-1,1)
+		fftr=fft.irfft(ffts,axis=0).reshape(nperiod,nbin,npol)
+	return fftr
 #
 nchan0=chanend-chanstart
 if dmmodi:

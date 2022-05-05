@@ -159,12 +159,13 @@ elif mark=='ld':
 	seg_times=np.concatenate(segs)
 	segis=list(map(lambda x: list(range(len(x))),segs))
 	seg_sorts=np.argsort(seg_times)
+	seg_sorts1=np.argsort(seg_sorts)
 	lseg=np.cumsum(list(map(len,segs)))
 	nseg=len(seg_times)
 	for i in np.arange(nseg-1,0,-1):
-		if np.abs(seg_times[seg_sorts[i]]-seg_times[seg_sorts[i-1]])<1e-10:
+		if np.abs(seg_times[i]-seg_times[seg_sorts1[seg_sorts[i]-1]])<1e-10:
 			segi=np.where((lseg-i)>0)[0][0]
-			tmpi=len(segs[segi]+i-lseg[segi])
+			tmpi=len(segs[segi])+i-lseg[segi]
 			segs[segi].pop(tmpi)
 			segis[segi].pop(tmpi)
 	seg_times=np.concatenate(segs)

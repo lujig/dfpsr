@@ -271,6 +271,11 @@ class vector:
 		self.type=type0
 		self.size=np.array(x).size
 	#
+	def __eq__(self,other):
+		if type(other) is not vector:
+			return False
+		return (self.x==other.x)&(self.y==other.y)&(self.z==other.z)&(self.center==other.center)&(self.scale==other.scale)&(self.coord==other.coord)&(self.unit==other.unit)&(self.type==other.type)
+	#
 	def __str__(self):
 		if self.size>6:
 			x=self.x.copy()
@@ -283,7 +288,7 @@ class vector:
 			xstr=str(self.x)
 			ystr=str(self.y)
 			zstr=str(self.z)
-		return 'x='+xstr+',\n y='+ystr+',\n z='+zstr+',\n center='+self.center+', scale='+self.scale+', coord='+self.coord+', unit='+str(self.unit)+', type0='+self.type+', size='+str(self.size)
+		return 'x='+xstr+',\ny='+ystr+',\nz='+zstr+',\ncenter='+self.center+', scale='+self.scale+', coord='+self.coord+', unit='+str(self.unit)+', type='+self.type+', size='+str(self.size)
 	#
 	def __repr__(self):
 		return self.__str__()
@@ -450,6 +455,11 @@ class time:
 			self.scale=scale
 			self.unit=unit
 			self.size=size
+	#
+	def __eq__(self,other):
+		if type(other) is not time:
+			return False
+		return (self.date==other.date)&(self.second==other.second)&(self.scale==other.scale)&(self.unit==other.unit)
 	#
 	def __str__(self):
 		if self.size>6:
@@ -673,6 +683,14 @@ class times:
 		self.ephem_compute(ephname=ephem+'.1950.2050')
 		self.tt2tdb()
 		self.ephem_compute(ephname=ephem+'.1950.2050')
+	#
+	def __eq__(self,other):
+		if type(other) is not time:
+			return False
+		return (self.ephem==other.ephem)&(self.ephver==other.ephver)&(self.utc==other.utc)
+	#
+	def copy(self):
+		return cp.deepcopy(self)
 	#
 	def tcb2tt(self):
 		t1=self.tcb.copy()

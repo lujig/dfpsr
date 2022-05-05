@@ -34,5 +34,37 @@ def dmdet(fftdata,dmconst,dm0,dmw,polynum,prec=0):
 				else: return dmdet(fftdata,dmconst,dmmax,dmerr*20,polynum,prec=prec)
 			else: return dmmax,dmerr,dm,value,fitvalue
 	return 0,0
-
+#
+def baseline0(data):
+	nbin=data.size
+	bins,mn=10,nbin/10
+	stat,val=np.histogram(data[:,0],bins)
+	while stat.max()>mn and 2*bins<mn:
+		bins*=2
+		stat,val=np.histogram(data,bins)
+	val=(val[1:]+val[:-1])/2.0
+	argmaxstat=np.argmax(stat)
+	if argmaxstat==0:
+		base=data[(data>(val[1]*-0.5+val[0]*1.5))&(data<(val[1]*0.5+val[0]*0.5))].mean(0)
+	elif argmaxstat==1:
+		poly=np.polyfit(val[:3],stat[:3],2)
+		#base=-poly[1]/poly[0]/2.0
+		base=data[(data[:,0]>(-poly[1]/poly[0]/2.0-(val[1]-val[0])*0.5))&(data[:,0]<(-poly[1]/poly[0]/2.0+(val[1]-val[0])*0.5))].mean(0)
+	else:
+		poly=np.polyfit(val[(argmaxstat-2):(argmaxstat+3)],stat[(argmaxstat-2):(argmaxstat+3)],2)
+		#base=-poly[1]/poly[0]/2.0
+		base=data[(data[:,0]>(-poly[1]/poly[0]/2.0-(val[1]-val[0])*0.5))&(data[:,0]<(-poly[1]/poly[0]/2.0+(val[1]-val[0])*0.5))].mean(0)
+	return base
+#
+def baseline(data,pos=False):
+	nbin=data.size
+	base_nbin=int(nbin/10)
+	tmp=np.append(np.zeros(base_nbin),np.ones(nbin-base_nbin))
+	tmp0=fft.irfft(fft.rfft(data)*fft.rfft(tmp).conj())
+	bin0=np.argmax(tmp0)
+	base=data[bin0:(bin0+base_nbin)].mean()
+	if pos:
+		return base,bin0
+	else:
+		return base
 
