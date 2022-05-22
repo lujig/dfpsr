@@ -688,6 +688,10 @@ def dealdata(filelist,n,lock=0):
 					ii,qq,uu,vv=noise_a1p2*data[:,0]-noise_a1m2*data[:,1],noise_a1p2*data[:,1]-noise_a1m2*data[:,0],noise_cos*data[:,2]+noise_sin*data[:,3],-noise_sin*data[:,2]+noise_cos*data[:,3]
 					data=np.zeros([nchan,npol,nsblk+4])
 					data[:,0,2:-2],data[:,1,2:-2],data[:,2,2:-2],data[:,3,2:-2]=ii.T,qq.T,uu.T,vv.T
+			else:
+				data_tmp=np.zeros([nchan,npol,nsblk+4])
+				data_tmp[:,:,2:-2]=data.transpose(2,1,0)
+				data=data_tmp
 			tpsub,tpsubn=gendata(cumsub,data,tpsub,tpsubn,last=(i==(fsub-1)),first=i==0,lock=lock)
 		f.close()
 	gc.collect()

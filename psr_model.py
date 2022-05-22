@@ -743,13 +743,13 @@ class psr_timing:
 		while np.min(np.abs(dep))>1e-12:
 			dep=(phase-(ep-ecc*np.sin(ep)))/(1-ecc*np.cos(ep))
 			ep+=dep
-		depdorbit=1/(1-ecc*cbe)
 		som=np.sin(omega)
 		com=np.cos(omega)
 		alpha=asini*np.sin(omega)
 		tt=np.sqrt(1-ecc**2)
 		beta=asini*np.cos(omega)*tt
 		sbe,cbe=np.sin(ep),np.cos(ep)
+		depdorbit=1/(1-ecc*cbe)
 		q=alpha*(cbe-ecc)+(beta+gamma)*sbe
 		vr_c=(-alpha*sbe+beta*cbe)*depdorbit*(2*np.pi/pb)
 		torb=-q+q*vr_c
@@ -799,13 +799,13 @@ class psr_timing:
 		while np.min(np.abs(dep))>1e-12:
 			dep=(phase-(ep-ecc*np.sin(ep)))/(1-ecc*np.cos(ep))
 			ep+=dep
-		depdorbit=1/(1-ecc*cbe)
 		som=np.sin(omega)
 		com=np.cos(omega)
 		alpha=asini*np.sin(omega)
 		tt=np.sqrt(1-ecc**2)
 		beta=asini*com*tt
 		sbe,cbe=np.sin(ep),np.cos(ep)
+		depdorbit=1/(1-ecc*cbe)
 		q=alpha*(cbe-ecc)+(beta+gamma)*sbe
 		vr_c=(-alpha*sbe+beta*cbe)*depdorbit*(2*np.pi/pb)
 		torb=-q+q*vr_c+torb
@@ -852,13 +852,13 @@ class psr_timing:
 		while np.min(np.abs(dep))>1e-12:
 			dep=(phase-(ep-ecc*np.sin(ep)))/(1-ecc*np.cos(ep))
 			ep+=dep
-		depdorbit=1/(1-ecc*cbe)
 		som=np.sin(omega)
 		com=np.cos(omega)
 		alpha=asini*np.sin(omega)
 		tt=np.sqrt(1-ecc**2)
 		beta=asini*com*tt
 		sbe,cbe=np.sin(ep),np.cos(ep)
+		depdorbit=1/(1-ecc*cbe)
 		q=alpha*(cbe-ecc)+(beta+gamma)*sbe
 		vr_c=(-alpha*sbe+beta*cbe)*depdorbit*(2*np.pi*self.psr.fb0)
 		torb=-q+q*vr_c

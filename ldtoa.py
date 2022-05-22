@@ -10,7 +10,6 @@ import psr_read as pr
 import psr_model as pm
 import warnings as wn
 import adfunc as af
-import matplotlib.pyplot as plt
 wn.filterwarnings('ignore')
 #
 version='JigLu_20201202'
@@ -94,8 +93,6 @@ else:
 #
 filelist=args.filename
 filenum=len(filelist)
-file_times=[]
-file_len=[]
 nsub_new=[]
 def ld_check(fname,filetype='Ld file'):
 	global freq_s,freq_e
@@ -217,7 +214,7 @@ if args.norm:
 	command.append('-n')
 	data_tmp-=data_tmp.mean(1).reshape(-1,1)
 	data_tmp/=data_tmp.std(1).reshape(-1,1)
-tpdata0=data0[rchan].sum(0)
+tpdata0=data_tmp.sum(0)
 #
 if args.lnumber:
 	command.append('-l '+str(args.lnumber))
@@ -256,7 +253,7 @@ def poa(tpdata0,tpdata):
 	ang=np.angle(df)
 	fitnum=lnumber
 	popt,pcov=so.curve_fit(lin,np.arange(1,fitnum),ang[1:fitnum],p0=[0.0],sigma=err[1:fitnum])
-	dt=-popt[0]/(2*np.pi)+tmpnum/((nb-1)*2)
+	dt=popt[0]/(2*np.pi)-tmpnum/((nb-1)*2)
 	dterr=pcov[0,0]**0.5/(2*np.pi)
 	return [dt,dterr]
 #
@@ -281,11 +278,11 @@ for k in np.arange(filenum):
 	#
 	if args.zap_file:
 		if 'zchan' in info.keys():
-			zchan=np.array(list(set(map(int,info['zchan'].split(','))).union(zchan)))
+			zchan_tmp=np.array(list(set(map(int,info['zchan'].split(','))).union(zchan)))
 	elif 'zchan' in info.keys():
-		zchan=np.int32(info['zchan'].split(','))
+		zchan_tmp=np.int32(info['zchan'].split(','))
 	else:
-		zchan=np.int32([])
+		zchan_tmp=np.int32([])
 	#
 	if args.subint_range:
 		if sub_end<0:
@@ -305,7 +302,7 @@ for k in np.arange(filenum):
 		chanstart,chanend=0,nchan
 	#
 	nchan_new=chanend-chanstart
-	rchan=np.array(list(set(range(chanstart,chanend))-set(list(zchan))))-chanstart
+	rchan=np.array(list(set(range(chanstart,chanend))-set(list(zchan_tmp))))-chanstart
 	if not args.tscrunch:
 		phase0=int(info['phase0'])
 		sub_nperiod=int(info['sub_nperiod'])*np.ones(nperiod,dtype=np.float64)
@@ -337,8 +334,12 @@ for k in np.arange(filenum):
 				fftdata=fft.rfft(data,axis=1)
 				tmp=np.shape(fftdata)[-1]
 				const=(1/freq_real**2*4148.808/np.float64(info['period'])*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
-				data1=shift(fftdata,const*ddm)
-			tpdata=data1[rchan].mean(0)
+				data=shift(fftdata,const*ddm)
+			data_tmp=data[rchan]
+			if args.norm:
+				data_tmp-=data_tmp.mean(1).reshape(-1,1)
+				data_tmp/=data_tmp.std(1).reshape(-1,1)
+			tpdata=data1_tmp.mean(0)
 			middle_int=middle_phase.date[s]-phase_start
 			middle_offs=middle_phase.second[s]
 			dp,dpe=poa(tpdata0,tpdata)
@@ -351,7 +352,7 @@ for k in np.arange(filenum):
 			toae=dpe*period0
 			if output=='screen':
 				sys.stdout=sys.__stdout__
-				print(toa.date[0],toa.second[0],dpe,freq,dm_new,period0)
+				print(toa.date[0],toa.second[0],dp,dpe,freq,dm_new,period0)
 				sys.stdout=open(os.devnull,'w')
 			else:
 				result[cumsub[k]+s]=[toa.date[0],toa.second[0],toae,freq,dm_new,period0]
@@ -368,7 +369,7 @@ for k in np.arange(filenum):
 		chebd=nc.chebder(chebc)
 		middle_time=nc.chebval(middle,chebc)
 		psr1=pm.psr_timing(pr.psr(info['psr_par']),te.times(te.time(np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time)),freq_s)
-		data=d.period_scrunch()[chanstart:chanend,:,0]
+		data=d.period_scrunch(sub_s,sub_e)[chanstart:chanend,:,0]
 		if not args.dm_corr:
 			freq_real=np.linspace(freq_start,freq_end,nchan+1)[:-1]*psr1.vchange.mean()
 			if 'best_dm' in info.keys():
@@ -382,8 +383,9 @@ for k in np.arange(filenum):
 			dm_new=ddm+np.float64(info['dm'])
 		else:
 			dm_new=np.float64(info['dm'])
-		data-=data.mean(1).reshape(-1,1)
-		data/=data.std(1).reshape(-1,1)
+		if args.norm:
+			data-=data.mean(1).reshape(-1,1)
+			data/=data.std(1).reshape(-1,1)
 		tpdata=data.mean(0)
 		dp,dpe=poa(tpdata0,tpdata)
 		middle_int,middle_offs=np.divmod(middle,1)
