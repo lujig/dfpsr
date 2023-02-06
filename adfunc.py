@@ -27,7 +27,7 @@ def dmdet(fftdata,dmconst,dm0,dmw,polynum,prec=0):
 			errfunc=np.append(polyfunc[:-1],polyfunc[-1]-np.polyval(polyfunc,dmmax)+error)
 			roots=np.roots(errfunc)
 			roots=np.real(roots[np.isreal(roots)])
-			dmerr=np.mean(np.abs([roots[np.argmin(np.abs(roots-dmmax+dmw/10))],roots[np.argmin(np.abs(roots-dmmax-dmw/10))]]-dmmax))
+			dmerr=np.mean(np.abs(np.array([roots[np.argmin(np.abs(roots-dmmax+dmw/10))],roots[np.argmin(np.abs(roots-dmmax-dmw/10))]])-dmmax))
 			error1=np.std(res[1:]-res[:-1])
 			if prec>0:
 				if dmerr<prec or error1>error: return dmmax,dmerr
@@ -56,15 +56,30 @@ def baseline0(data):
 		base=data[(data[:,0]>(-poly[1]/poly[0]/2.0-(val[1]-val[0])*0.5))&(data[:,0]<(-poly[1]/poly[0]/2.0+(val[1]-val[0])*0.5))].mean(0)
 	return base
 #
-def baseline(data,pos=False):
+def baseline(data,base_nbin=0,pos=False):
 	nbin=data.size
-	base_nbin=int(nbin/10)
+	base_nbin=int(base_nbin)
+	if base_nbin<=0:
+		base_nbin=int(nbin/10)
 	tmp=np.append(np.zeros(base_nbin),np.ones(nbin-base_nbin))
 	tmp0=fft.irfft(fft.rfft(data)*fft.rfft(tmp).conj())
 	bin0=np.argmax(tmp0)
-	base=data[bin0:(bin0+base_nbin)].mean()
+	base=np.append(data,data)[bin0:(bin0+base_nbin)].mean()
 	if pos:
 		return base,bin0
 	else:
 		return base
+#
+def radipos(data,crit=10,base=False,base_nbin=0):
+	base,pos=baseline(data,pos=True,base_nbin=base_nbin)
+	nbin=data.size
+	base_nbin=int(nbin/10)
+	noise=data[pos:(pos+base_nbin)].std()
+	data-=base
+	bin0=np.arange(nbin)[data>(crit*noise)]
+	if base:
+		return bin0,pos
+	else:
+		return bin0
+#
 

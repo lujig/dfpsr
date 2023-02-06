@@ -37,7 +37,7 @@ for ldfile in filelist:
 				sys.stdout.write(pname+' '+info['nbin_new']+'\n')
 			else:
 				sys.stdout.write(pname+' '+info['nbin']+'\n')
-		elif pname=='nbin':
+		elif pname=='npol':
 			if 'compressed' in info.keys():
 				sys.stdout.write(pname+' '+info['npol_new']+'\n')
 			else:
@@ -54,5 +54,17 @@ for ldfile in filelist:
 			sys.stdout.write(pname+' '+str(np.int64(info['phase0']))+'  '+str(np.int64(info['phase0'])+np.int64(info['nperiod']))+'\n')
 		elif pname=='phase0':
 			sys.stdout.write(pname+' '+str(np.int64(info['phase0']))+'\n')
+		elif pname in info.keys():
+			if pname=='zchan':
+				sys.stdout.write('The zapped channels can not be shown.'+'\n')
+			para=info[pname]
+			if type(para) is not list:
+				sys.stdout.write(pname+' '+para+'\n')
+			elif len(filelist)==1 and len(plist)==1:
+				sys.stdout.write(pname+'\n')
+				for line in para:
+					sys.stdout.write(line+'\n')
+			else:
+				sys.stdout.write('Parameter '+pname+' is a list, and it must be checked individually.'+'\n')
 		else:
 			sys.stdout.write('Parameter '+pname+' can not be found.'+'\n')

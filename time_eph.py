@@ -245,7 +245,7 @@ def mjd2datetime(mjd):
 	modat=modat0.cumsum(1)
 	monum=((iday.reshape(-1,1)-modat)>0).sum(1)
 	mo=1+monum
-	day=iday-modat[np.arange(ndate),monum]+modat0[np.arange(ndate),monum]
+	day=np.int8(iday-modat[np.arange(ndate),monum]+modat0[np.arange(ndate),monum])
 	return yr,mo,day,sec,iday
 #
 class vector:
@@ -499,7 +499,7 @@ class time:
 	def update(self):
 		datemain,dateresi=np.divmod(self.date,1)
 		secondmain,secondresi=np.divmod(self.second+dateresi*unit,unit)
-		self.date=np.int32(datemain+secondmain)
+		self.date=np.int64(datemain+secondmain)
 		self.second=np.float64(secondresi)
 	#
 	def local2unix(self):
@@ -515,7 +515,7 @@ class time:
 			date,second=np.divmod(self.date,86400)
 			date+=40587
 			second=np.float64(second)+self.second
-			return time(date,second,'unix',unit)			
+			return time(date,second,'local',unit)			
 	#
 	def local2utc(self):
 		if self.scale=='local':
@@ -638,6 +638,67 @@ class time:
 			return self.add(self.tcb2tdb(),scale='tdb')
 		elif self.scale=='tdb': return self.copy()
 	#
+#
+class phase():
+	def __init__(self,integer,offset,scale='phase'):
+		integer=np.array(integer).reshape(-1)
+		offset=np.array(offset).reshape(-1)
+		size=np.array(integer).size
+		if type(integer[0])==str:
+			integer0,offset0=np.zeros_like(integer,dtype=np.int64),np.zeros_like(offset,dtype=np.float64)
+			for i in range(size):
+				tmp=integer[i].split('\.')
+				integer0[i],offset0[i]=np.int64(tmp[0]),np.float64('0.'+tmp[1])
+			integer,offset=integer0,offset0
+		integer_main,integer_resi=np.divmod(integer,1)
+		offset_main,offset_resi=np.divmod(offset+integer_resi,1)
+		if size==np.array(offset).size:
+			self.integer=np.reshape(np.int64(integer_main+offset_main),-1)
+			self.offset=np.reshape(np.float64(offset_resi),-1)
+			self.scale=scale
+			self.phase=self.integer+self.offset
+			self.size=size
+
+	#
+	def __str__(self):
+		if self.size>6:
+			x=self.phase
+			tstr='[ '+str(x[0])+', '+str(x[1])+', '+str(x[2])+', ..., '+str(x[-3])+', '+str(x[-2])+', '+str(x[-1])+' ]'
+		else:
+			tstr=str(self.phase)
+		return 'phase='+tstr+' size='+str(self.size)
+	#
+	def __repr__(self):
+		return self.__str__()
+	#
+	def __eq__(self,other):
+		if type(other) is not phase:
+			return False
+		return (self.integer==other.integer)&(self.offset==other.offset)
+	#
+	def copy(self):
+		return cp.deepcopy(self)
+	#
+	def minus(self,phase1):
+			return phase(self.integer-phase1.integer,self.offset-phase1.offset,scale='delta_phase')
+	#
+	def add(self,dt):
+		dt=np.array(dt)
+		if dt.size==1:
+			dt=dt.reshape(-1)[0]
+			if type(dt)==phase:
+				if dt.scale=='delta_phase':
+					return phase(self.integer+dt.integer,self.offset+dt.offset)
+			else:
+				return phase(self.integer,self.offset+dt)
+		elif self.size==dt.size:
+			return phase(self.integer,self.offset+dt)
+	#
+	def update(self):
+		integer_main,integer_resi=np.divmod(self.integer,1)
+		offset_main,offset_resi=np.divmod(self.offset+integer_resi,1)
+		self.integer=np.int64(integer_main+offset_main)
+		self.offset=np.float64(offset_resi)
 #
 class times:
 	def __init__(self,time0,ephem='DE436',ephver=5):
@@ -888,6 +949,7 @@ class times:
 		tsid,sdd=lmst(self.ut1.mjd,0.0)
 		tsid*=(2*np.pi)
 		ph=tsid+pc-coord2
+		self.lst=ph*12/np.pi
 		eeq=np.array([coord0*np.cos(ph),coord0*np.sin(ph),coord1*np.ones(self.size)]).T.reshape(-1,3,1)
 		prn=get_precessionMatrix(self.ut1.mjd,nut)
 		sitex,sitey,sitez=(prn@eeq).reshape(-1,3).T
@@ -1000,6 +1062,7 @@ class times:
 		#
 		# the calculation of era is just 1st order in the sofa code, it is lower than the 3rd order of lmst in tempo2? or the lmst is not the era?
 		era=2*np.pi*((ut1_jd2+0.7790572732640 + 0.00273781191135448 * (ut1_jd1-dj00+ut1_jd2))%1) # earth rotation angle, Greenwich sidereal time
+		self.lst=(era+lon)/(2*np.pi)%1
 		t2c=polarmotion@rotz(era,rc2i)
 		crs0=t2c.transpose(0,2,1)@(trs0.reshape(3,1))
 		crs1=t2c.transpose(0,2,1)@(trs1.reshape(-1,3,1))

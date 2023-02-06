@@ -146,7 +146,7 @@ if mark=='fits':
 	nbin=file_len.sum()
 	stt_time=file_t0[0]
 	freq_start,freq_end=np.array([-0.5,0.5])*nchan*channel_width+freq
-	info={'nbin_origin':nbin,'telename':telename,'freq_start':freq_start,'freq_end':freq_end,'nchan':nchan,'tsamp_origin':tsamp,'stt_time':stt_time,'npol':npol,'mode':'cal','length':nbin*tsamp}
+	info={'nbin_origin':int(nbin),'telename':telename,'freq_start':freq_start,'freq_end':freq_end,'nchan':int(nchan),'tsamp_origin':tsamp,'stt_time':stt_time,'npol':int(npol),'mode':'cal','length':nbin*tsamp}
 	if args.reverse:
 		command.append('-r')
 	if args.subi:
@@ -172,7 +172,7 @@ elif mark=='ld':
 	seg_sorts=np.argsort(seg_times)
 	lseg=list(map(len,segs))
 	nseg=len(seg_times)
-	info={'telename':telename,'freq_start':freq_start,'freq_end':freq_end,'nchan':nchan,'npol':npol,'mode':'cal','stt_time':stt_time,'length':np.sum(file_len)}
+	info={'telename':telename,'freq_start':freq_start,'freq_end':freq_end,'nchan':int(nchan),'npol':int(npol),'mode':'cal','stt_time':stt_time,'length':np.sum(file_len)}
 	if args.reverse:
 		sys.stdout.write('Warning: Band of the ld file will not be reversed, and the flag \'-r\' will be ignored.\n')
 	if args.subi:
@@ -295,5 +295,5 @@ elif mark=='ld':
 		for i in np.arange(nseg):
 			d.write_period(noise_data[i],i)
 #
-info['seg_time']=list(map(str,noise_time))
+info['seg_time']=list(noise_time)
 d.write_info(info)

@@ -6,6 +6,8 @@ import argparse as ap
 from matplotlib.figure import Figure
 import matplotlib.lines as ln
 import ld,os,copy,sys
+import matplotlib.pyplot as plt
+plt.rcParams['font.family']='Serif'
 #
 version='JigLu_20200923'
 parser=ap.ArgumentParser(prog='ldzap',description='Zap the frequency domain interference in ld file.',epilog='Ver '+version)
@@ -13,6 +15,7 @@ parser.add_argument('-v','--version',action='version',version=version)
 parser.add_argument("-z","--zap",dest="zap_file",default=0,help="file recording zap channels")
 parser.add_argument('-n',action='store_true',default=False,dest='norm',help='normalized the data at each channel')
 parser.add_argument('-m',action='store_true',default=False,dest='mean',help='use mean value as the screening standard')
+parser.add_argument('-c','--cal',action='store_true',default=False,dest='cal',help='use calibration parameter as the screening standard')
 parser.add_argument("filename",help="input ld file")
 args=(parser.parse_args())
 #
@@ -38,18 +41,18 @@ if nbin!=1:
 	data0=d.period_scrunch()[:,:,0]
 else:
 	data0=d.__read_bin_segment__(0,nperiod)[:,:,0]
-if nbin>128 or ((nbin==1)&(nperiod>128)):
-	data0=fft.irfft(fft.rfft(data0,axis=1)[:,:65],axis=1)
+if nbin>128 or ((nbin==1)&(nperiod>512)):
+	data0=fft.irfft(fft.rfft(data0,axis=1)[:,:257],axis=1)
 if args.norm:
 	data=data0-data0.mean(1).reshape(-1,1)
 	data/=data.std(1).reshape(-1,1)
-	data-=data.min()-1
+	data-=data[np.isfinite(data)].min()-1
 else:
 	data=data0
 testdata=copy.deepcopy(data)
 testdata=ma.masked_where(testdata<0,testdata)
 if 'zchan' in info.keys():
-	zaplist=[map(int,info['zchan'].split(','))]
+	zaplist=[list(map(int,info['zchan'].split(',')))]
 	zapnum=zaplist[0]
 	zaparray=np.zeros_like(testdata)
 	zaparray[zapnum,:]=True
@@ -82,6 +85,18 @@ else:
 spec=spec-np.min(spec)
 spec0=np.append(0,np.append(spec.repeat(2),0))
 spec1=copy.deepcopy(spec0)
+cali=args.cal
+if args.cal:
+	if 'cal' not in info.keys():
+		parser.error('The file information does not contain calibration parameters.')
+	nchan0=int(info['nchan'])
+	if info['cal_mode']=='single':
+		cal=np.float64(info['cal']).reshape(4,nchan0).T
+	else:
+		noisedt=np.float64(info['stt_time'])+np.float64(info['length'])/2/86400-np.float64(info['noise_time0'])
+		cal=np.polyval(np.float64(info['cal']).reshape(2,4,nchan0),noisedt).T
+	cal0=np.concatenate((np.zeros([1,4]),cal.repeat(2,axis=0),np.zeros([1,4])),axis=0)
+	cal1=copy.deepcopy(cal0)
 freq_start,freq_end=np.float64(info['freq_start']),np.float64(info['freq_end'])
 ylim0=[freq_start,freq_end]
 channelwidth=(freq_end-freq_start)/nchan
@@ -90,10 +105,14 @@ freq=np.linspace(ylim0[0]-halfwidth,ylim0[1]-halfwidth,len(spec)+1).repeat(2)
 #
 def plotimage(ylim):
 	ax.imshow(testdata[::-1,:],aspect='auto',interpolation='nearest',extent=(0,1,ylim0[0]-halfwidth,ylim0[1]-halfwidth),cmap=colormap)
-	ax1.plot(spec1,freq,'k-')
+	if cali:
+		ax1.plot(cal1,freq,'-')
+		ax1.set_xlim(np.min(cal1)*1.1,np.max(cal1)*1.1)
+	else:
+		ax1.plot(spec1,freq,'k-')
+		ax1.set_xlim(0,np.max(spec1)*1.1)
 	ax.set_ylim(ylim[0]-halfwidth,ylim[1]-halfwidth)
 	ax1.set_ylim(ylim[0]-halfwidth,ylim[1]-halfwidth)
-	ax1.set_xlim(0,np.max(spec1)*1.1)
 	ax1.set_xticks([])
 	ax1.set_yticks([])
 	if nbin==1:
@@ -180,6 +199,11 @@ def update_image():
 	spec1=copy.deepcopy(spec0)
 	spec1[2*zapnum+1]=0
 	spec1[2*zapnum+2]=0
+	if args.cal:
+		global cal1
+		cal1=copy.deepcopy(cal0)
+		cal1[2*zapnum+1]=0
+		cal1[2*zapnum+2]=0
 	fig.lines=[l1]
 	plotimage(ylim)
 	ylim=0
@@ -211,7 +235,7 @@ def keymotion(a):
 			zapnum.update(i)
 		zapnum=np.sort(list(zapnum))
 		zapnum=zapnum[(zapnum>=0)&(zapnum<nchan)]
-		np.savetxt('zap.txt',zapnum,fmt='%i')
+		np.savetxt(args.filename[:-3]+'_zap.txt',zapnum,fmt='%i')
 	elif a=='s':
 		root.destroy()
 		zapnum=set()
@@ -219,9 +243,10 @@ def keymotion(a):
 			zapnum.update(i)
 		zapnum=np.sort(list(zapnum))
 		zapnum=list(zapnum[(zapnum>=0)&(zapnum<nchan)])
-		info['zchan']=str(zapnum)[1:-1]
+		info['zchan']=list(zapnum)
 		save=ld.ld('.'.join(args.filename.split('.')[:-1])+'_zap.ld')
 		save.write_shape([nchan,nperiod,nbin,npol])
+		sys.stdout.write("file saving...\n\n")
 		for i in np.arange(nchan):
 			if i in zapnum:
 				save.write_chan(np.zeros(nperiod*nbin*npol),i)
@@ -244,6 +269,10 @@ def keymotion(a):
 		if len(zaplist)>zap0:
 			zaplist.pop()
 		else: return
+		update_image()
+	elif a=='c':
+		global cali
+		cali=not cali
 		update_image()
 	elif a=='h':
 		sys.stdout.write("\nldzap interactive commands\n\n")

@@ -16,10 +16,10 @@ class psr:
 	def copy(self):
 		return cp.deepcopy(self)
 	#
-	def modify(self,para,paraval=0):
+	def modify(self,para,paraval=1e200):
 		if para not in self.paras:
 			self.paras.append(para)
-			if paraval==0:
+			if paraval>1e190:
 				return
 			if para in {'p2', 'p1', 'f1', 'p3', 'f2', 'f3'}:
 				if para=='p1': self.paras.append('f1')
@@ -28,7 +28,7 @@ class psr:
 				elif para=='f2': self.paras.append('p2')
 				elif para=='p3': self.paras.append('f3')
 				elif para=='f3': self.paras.append('p3')
-		if not paraval==0:
+		if not paraval>1e190:
 			if para=='binary':
 				if self.binary:
 					paradict0=eval('paras_'+self.binary)
@@ -176,6 +176,29 @@ class psr:
 		else:
 			self.acc=te.vector(0,0,0,center='bary',scale='si',coord='ecl',unit=te.sl,type0='acc')
 			self.acc_equ=te.vector(0,0,0,center='bary',scale='si',coord='equ',unit=te.sl,type0='acc')
+	#
+	def dpos(self,vectype,coord1,coord2):
+		arcsec2rad=np.pi/648000.0
+		obliq=84381.4059*arcsec2rad
+		ce=np.cos(obliq)
+		se=np.sin(obliq)
+		convert = 1.0/1000.0/60.0/60.0*np.pi/180.0*100.0
+		if coord2=='ecl':
+			alpha=self.elong
+			delta=self.elat
+			coordconv=np.array([[1,0,0],[0,ce,se],[0,-se,ce]])
+		elif coord2=='equ':
+			alpha=self.raj
+			delta=self.decj
+			coordconv=np.array([[1,0,0],[0,ce,-se],[0,se,ce]])
+		ca=np.cos(alpha)
+		sa=np.sin(alpha)
+		cd=np.cos(delta)
+		sd=np.sin(delta)
+		if vectype=='pos': dvecdcoord=np.array([[-sa*cd,ca*cd,0],[-ca*sd,-sa*sd,cd]])
+		elif vectype=='vel' or vectype=='acc': dvecdcoord=np.array([[-sa,ca,0],[-ca*sd,-sa*sd,cd]])*convert
+		if coord1==coord2: return dvecdcoord
+		else: return (dvecdcoord@coordconv)
 	#
 	def change_units(self):
 		if self.units=='TCB':
@@ -563,6 +586,8 @@ class psr:
 		self.deal_para('pmelat',paras,paras_key,err_case=['PMELONG' not in paras_key],err_exc=['Strong Warning: The parameter PMELAT is in parfile without PMELONG.'])
 		self.deal_para('pmra2',paras,paras_key,err_case=['pmra' not in self.paras,'PMDEC2' not in paras_key],err_exc=['The parameter PM2 is in parfile without PM.','The parameter PMRA2 is in parfile without PMDEC2.'])
 		self.deal_para('pmdec2',paras,paras_key,err_case=['pmdec' not in self.paras,'PMRA2' not in paras_key],err_exc=['The parameter PM2 is in parfile without PM.','The parameter PMDEC2 is in parfile without PMRA2.'])
+		self.deal_para('pmelong2',paras,paras_key,err_case=['pmelong' not in self.paras,'PMELAT2' not in paras_key],err_exc=['The parameter PM2 is in parfile without PM.','The parameter PMELONG2 is in parfile without PMELAT2.'])
+		self.deal_para('pmelat2',paras,paras_key,err_case=['pmelat' not in self.paras,'PMELONG2' not in paras_key],err_exc=['The parameter PM2 is in parfile without PM.','The parameter PMELAT2 is in parfile without PMELONG2.'])
 		self.deal_para('pmrv',paras,paras_key)
 		self.deal_para('px',paras,paras_key)
 		self.deal_para('posepoch',paras,paras_key,exce='Warning: No POSEPOCH in the parfile, using PEPOCH instead.',value=self.pepoch.mjd)
@@ -783,7 +808,7 @@ class psr:
 			if paraname in para_with_err: self.__setattr__(paraname+'_err',para_err)
 			if para_count: self.paras.append(paraname)
 #
-all_paras={'p0', 'pmra', 'pmdec', 'pmrv', 'f0', 'p2', 'p1', 'pmra2', 'pmdec2', 'f1', 'p3', 'f2', 'f3', 'f4', 'f5', 'dm', 'cm', 'dmmodel', 'dmoffs', 'dmx', 'dm_s1yr', 'dm_c1yr', 'fddc', 'fd', 'raj', 'decj', 'px' ,'cmidx', 'fddi', 'rm', 'pepoch', 'posepoch', 'dmepoch', 'dmoffs_mjd', 'dmxr1', 'dmxr2', 'name', 'dshk', 'binary','t0', 'pb', 'ecc', 'pbdot', 'a1dot', 'a1', 'omdot', 'om', 'gamma','bpjep','bpjph','bpja1','bpjec','bpjom','bpjpb', 'fb0', 'fb1', 'fb2', 'fb3', 'tasc', 'eps1', 'eps2', 'sini', 'm2', 'eps1dot', 'eps2dot', 'orbifunc', 'xpbdot', 'edot', 'kom', 'kin', 'mtot', 'a2dot', 'e2dot', 'orbpx', 'dr', 'dtheta', 'dth', 'a0', 'b0', 'om2dot', 'xomdot','afac','daop', 'pb2dot', 'ephver', 'ephem', 'dm1', 'dm2', 'dm3', 'cm1', 'cm2', 'cm3', 'glep', 'glph', 'gltd', 'glf0', 'glf1', 'glf2', 'glf0d', 'pmelong', 'pmelat', 'pmelong2', 'pmelat2'}
+all_paras={'p0', 'pmra', 'pmdec', 'pmrv', 'f0', 'p2', 'p1', 'pmra2', 'pmdec2', 'f1', 'p3', 'f2', 'f3', 'f4', 'f5', 'dm', 'cm', 'dmmodel', 'dmoffs', 'dmx', 'dm_s1yr', 'dm_c1yr', 'fddc', 'fd', 'raj', 'decj', 'px' ,'cmidx', 'fddi', 'rm', 'pepoch', 'posepoch', 'dmepoch', 'dmoffs_mjd', 'dmxr1', 'dmxr2', 'name', 'dshk', 'binary','t0', 'pb', 'ecc', 'pbdot', 'a1dot', 'a1', 'omdot', 'om', 'gamma','bpjep','bpjph','bpja1','bpjec','bpjom','bpjpb', 'fb0', 'fb1', 'fb2', 'fb3', 'tasc', 'eps1', 'eps2', 'sini', 'm2', 'eps1dot', 'eps2dot', 'orbifunc', 'xpbdot', 'edot', 'kom', 'kin', 'mtot', 'a2dot', 'e2dot', 'orbpx', 'dr', 'dtheta', 'dth', 'a0', 'b0', 'om2dot', 'xomdot','afac','daop', 'pb2dot', 'ephver', 'ephem', 'dm1', 'dm2', 'dm3', 'cm1', 'cm2', 'cm3', 'glep', 'glph', 'gltd', 'glf0', 'glf1', 'glf2', 'glf0d', 'elong', 'elat', 'pmelong', 'pmelat', 'pmelong2', 'pmelat2'}
 # with or without error
 para_with_err={'p0', 'pmra', 'pmdec', 'pmrv', 'f0', 'p2', 'p1', 'pmra2', 'pmdec2', 'f1', 'p3', 'f2', 'f3', 'f4', 'f5', 'dm', 'cm', 'dmmodel', 'dmoffs', 'dmx', 'dm_s1yr', 'dm_c1yr', 'fddc', 'fd', 'raj', 'decj', 'px', 'cmidx', 'fddi', 'rm', 'dshk', 't0', 'pb', 'ecc', 'pbdot', 'a1dot', 'a1', 'omdot', 'om', 'gamma', 'fb0', 'fb1', 'fb2', 'fb3', 'bpjph','bpja1','bpjec','bpjom','bpjpb', 'tasc', 'eps1', 'eps2', 'sini', 'm2', 'eps1dot', 'eps2dot', 'orbifuncV','h3', 'h4','nharm','stig', 'xpbdot', 'edot', 'kom', 'kin', 'mtot', 'a2dot', 'e2dot', 'orbpx', 'dr', 'dtheta', 'dth', 'a0', 'b0', 'om2dot', 'glep', 'glph', 'gltd', 'glf0', 'glf1', 'glf2', 'glf0d', 'pmelong', 'pmelat', 'pmelong2', 'pb2dot', 'pmelat2', 'xomdot', 'shapmax'}
 para_without_err={'pepoch','posepoch','dmepoch','dmoffs_mjd','dmxr1','dmxr2','name', 'binary', 'bpjep', 'orbifunc', 'orbifuncT', 'afac', 'daop', 'ephver', 'ephem'}

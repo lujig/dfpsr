@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import struct as st
+import fcntl
+import json
 #
 class ld():
 	def __init__(self,name):
@@ -151,16 +153,17 @@ class ld():
 			raise Exception('The input bin number is overrange.')
 		data=data.reshape(-1)
 		size=data.size
-		self.file=open(self.name,'rb+')
-		self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
-		data0=np.zeros_like(data,dtype=np.float64)
-		data0tmp=self.file.read(size*8)
-		length0=np.int64(len(data0tmp)/8)
-		data0[:length0]=np.array(st.unpack('>'+str(length0)+'d',data0tmp))
-		self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
-		self.file.write(st.pack('>'+str(size)+'d',*(data+data0)))
-		self.file.flush()
-		self.file.close()
+		with open(self.name,'rb+') as self.file:
+			fcntl.flock(self.file.fileno(),fcntl.LOCK_EX)
+			self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
+			data0=np.zeros_like(data,dtype=np.float64)
+			data0tmp=self.file.read(size*8)
+			length0=np.int64(len(data0tmp)/8)
+			data0[:length0]=np.array(st.unpack('>'+str(length0)+'d',data0tmp))
+			self.file.seek(24+ndata_chan*chan_num*8+bin_start*8*self.__size__[4])
+			self.file.write(st.pack('>'+str(size)+'d',*(data+data0)))
+			self.file.flush()
+			#self.file.close()
 		self.__refresh_size__()
 	#
 	def __write_chanbins__(self,data,bin_start,chan_num):
@@ -235,31 +238,15 @@ class ld():
 	def read_info(self):
 		self.file=open(self.name,'r')
 		self.file.seek(24+np.array(self.__size__[1:]).prod()*8)
-		infotext=self.file.readlines()
+		infotext=self.file.read()
 		self.file.close()
-		info={}
-		for line in infotext:
-			if line[0]==' ':
-				if key not in info.keys():
-					info[key]=line.strip('\n').strip()
-				elif type(info[key])==list:
-					info[key].append(line.strip('\n').strip())
-				else:
-					info[key]=[info[key],line.strip('\n').strip()]
-			else:
-				key=line.strip('\n').strip()
+		info=json.loads(infotext)
 		return info
 	#
 	def write_info(self,info):
 		self.file=open(self.name,'r+')
 		self.file.seek(24+np.array(self.__size__[1:]).prod()*8)
-		for key in info.keys():
-			self.file.write(key+'\n')
-			if type(info[key])==list:
-				for value in info[key]:
-					self.file.write((' '+str(value).strip()).strip('\n')+'\n')
-			else:
-				self.file.write(' '+str(info[key])+'\n')
+		self.file.write(json.dumps(info,indent=1))
 		self.file.truncate()
 		self.file.flush()
 		self.file.close()
@@ -277,3 +264,46 @@ class ld():
 		else:
 			raise Exception('Wrong parameter name.')
 #
+ldinfo_keys={'best_dm':[list,[2],float],
+ 'cal':[list,[4,'nchan'],float]
+ 'cal_mode':str,
+ 'compressed':bool,
+ 'dm':float,
+ 'file_time':str,
+ 'freq_end':float,
+ 'freq_start':float,
+ 'history':[list,['number_of_processing'],str],
+ 'krange':[list,[2],float],
+ 'length':float,
+ 'mode':str,
+ 'nbin':int,
+ 'nbin_new':int,
+ 'nbin_origin':int,
+ 'nchan':int,
+ 'nchan_new':int,
+ 'noise_time0':float,
+ 'nperiod':int,
+ 'npol':int,
+ 'npol_new':int,
+ 'nsub':int,
+ 'nsub_new':int,
+ 'period':float,
+ 'phase0':int,
+ 'pol_type':str,
+ 'predictor':[list,['ncoeff',2],float],
+ 'predictor_freq':[list,[5],float],
+ 'psr_name':str,
+ 'psr_par':[list,['number_of_lines'],str],
+ 'rm':[list,[2],float],
+ 'seg_time':[list,['numbe_of_noise_segments'],float],
+ 'spec':[list,['nchan'],float],
+ 'stt_date':int,
+ 'stt_sec':float,
+ 'stt_time':float,
+ 'stt_time_origin':float,
+ 'sub_nperiod':int,
+ 'sub_nperiod_last':int,
+ 'sublen':float,
+ 'telename':str,
+ 'tsamp_origin':float,
+ 'zchan':[list,['number_of_zapped_channels'],int]}

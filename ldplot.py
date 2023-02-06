@@ -7,6 +7,8 @@ import argparse as ap
 import os,time,ld,sys
 import warnings as wn
 import adfunc as af
+import matplotlib.pyplot as plt
+plt.rcParams['font.family']='Serif'
 #
 version='JigLu_20200930'
 parser=ap.ArgumentParser(prog='ldplot',description='Plot the ld file. Press \'s\' in figure window to save figure.',epilog='Ver '+version)
@@ -131,7 +133,9 @@ if args.fdomain:
 	if args.n:
 		data-=np.polyval(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(data)).T).T
 	else:
-		data-=data.mean(1).reshape(-1,1)
+		base,pos=af.baseline(data.mean(0),pos=True)
+		base=data[:,pos:(pos+int(nbin/10))].mean(1)
+		data-=base.reshape(-1,1)
 	if args.norm:
 		data/=data.max(1).reshape(-1,1)
 	if args.rotation:
@@ -145,7 +149,9 @@ if args.tdomain:
 	if args.n:
 		data-=np.polyval(np.polyfit(np.arange(nbin),data.T,args.n),np.array([range(nbin)]*len(data)).T).T
 	else:
-		data-=data.mean(1).reshape(-1,1)
+		base,pos=af.baseline(data.mean(0),pos=True)
+		base=data[:,pos:(pos+int(nbin/10))].mean(1)
+		data-=base.reshape(-1,1)
 	if args.norm:
 		data/=data.max(1).reshape(-1,1)
 	if args.rotation:
@@ -195,11 +201,11 @@ if args.title:
 		ax.text(0.5,texty,args.filename,horizontalalignment='center',verticalalignment='bottom',fontsize=20)		
 #
 def save_fig():
-	figname=raw_input("Please input figure name:")
+	figname=input("Please input figure name:")
 	if figname.split('.')[-1] not in ['ps','eps','png','pdf','pgf']:
 		figname+='.pdf'
 	fig.savefig(figname)
-	sys.stdout.write('Figure file'+figname+'has been saved.\n')
+	sys.stdout.write('Figure file '+figname+' has been saved.\n')
 #
 try:
 	import gtk

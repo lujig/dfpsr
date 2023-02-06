@@ -4,6 +4,8 @@ import numpy.polynomial.chebyshev as nc
 import argparse as ap
 import numpy.fft as fft
 import os,ld,time
+import adfunc as ad
+import psr_model as pm
 #
 version='JigLu_20180506'
 parser=ap.ArgumentParser(prog='ldcomp',description='Compress the ld file.',epilog='Ver '+version)
@@ -74,6 +76,7 @@ if args.nsub_new:
 		info['mode']='subint'
 elif args.tscrunch:
 	nsub_new=1
+	info['mode']='subint'
 	command.append('-T')
 else:
 	nsub_new=nperiod
@@ -92,7 +95,7 @@ else:
 if args.pscrunch:
 	npol_new=1
 	command.append('-P')
-	info['mode']='subint'
+	info['pol_type']='I'
 else:
 	npol_new=npol
 #
@@ -104,14 +107,14 @@ if args.zap_file:
 	if np.max(zchan)>=nchan or np.min(zchan)<0:
 		parser.error('The zapped channel number is overrange.')
 	if 'zchan' in info.keys():
-		info['zchan']=str(list(set(map(int,info['zchan'].split(','))).union(zchan)))[1:-1]
+		info['zchan']=list(set(info['zchan']).union(zchan))
 	else:
-		info['zchan']=str(list(zchan))[1:-1]
-	if nchan_new!=nchan:
+		info['zchan']=list(zchan)
+	if nchan_new>1 and nchan_new!=nchan:
 		info.pop('zchan')
 else:
 	if 'zchan' in info.keys():
-		if nchan_new!=nchan:
+		if nchan_new>1 and nchan_new!=nchan:
 			info.pop('zchan')
 	zchan=[]
 #
@@ -181,7 +184,7 @@ if dmmodi:
 		dm_old=np.float64(info['dm'])
 	else:
 		dm_old=0
-	disp_time=1/np.linspace(freq0,freq1,nchan0)**2*np.float64(new_dm-dm_old)*4148.808
+	disp_time=1/np.linspace(freq0,freq1,nchan0)**2*np.float64(new_dm-dm_old)*pm.dm_const
 	disp=disp_time*np.pi*2.0/np.float64(info['period'])/nperiod
 	disp=disp-np.min(disp)
 	info['dm']=new_dm
@@ -213,7 +216,7 @@ for i in np.arange(chanstart,chanend):
 		tpdata+=chan_data*(res*1.0/nchan_new)
 		if nsub_new!=nperiod:
 			if nsub_new==1:
-				tpdata=tpdata.sum(0)
+				tpdata=tpdata.sum(0).reshape(1,nbin,npol_new)
 			else:
 				tpdata=fft.rfft(tpdata,axis=0)*np.exp(-(0.5/nsub_new-0.5/nperiod)*1j*np.arange(nperiod/2+1)).reshape(-1,1,1)
 				if 2*nsub_new>=nperiod:
@@ -221,20 +224,28 @@ for i in np.arange(chanstart,chanend):
 				else:
 					tpdata=fft.irfft(tpdata[:(nsub_new+1),:],axis=0).reshape(nsub_new,2,nbin,npol_new).sum(1)
 		if nbin_new!=nbin:
-			tpdata=fft.rfft(tpdata,axis=1)*np.exp(-(0.5/nbin_new-0.5/nbin)*1j*np.arange(nbin/2+1)).reshape(1,-1,1)
-			if 2*nbin_new>=nbin:
-				tpdata=fft.irfft(np.concatenate((tpdata,np.zeros([nsub_new,nbin_new+1-tpdata.shape[1]])),axis=1),axis=1).reshape(nsub_new,nbin_new,2,npol_new).sum(2)
-			else:
-				tpdata=fft.irfft(tpdata[:,:(nbin_new+1)],axis=1).reshape(nsub_new,nbin_new,2,npol_new).sum(2)
+			#tpdata=fft.irfft(fft.rfft(tpdata,axis=1)*np.exp(-(0.5/nbin_new-0.5/nbin)*1j*np.arange(nbin/2+1)).reshape(1,-1,1),axis=1)
+			#if 2*nbin_new>=nbin:
+			#	tpdata=fft.irfft(np.concatenate((tpdata,np.zeros([nsub_new,nbin_new+1-tpdata.shape[1]])),axis=1),axis=1).reshape(nsub_new,nbin_new,2,npol_new).sum(2)
+			#else:
+			#	tpdata=fft.irfft(tpdata[:,:(nbin_new+1)],axis=1).reshape(nsub_new,nbin_new,2,npol_new).sum(2)
+			tpdata=tpdata.reshape(nsub_new,nbin_new,-1,npol_new).sum(2)
 		d1.write_chan(tpdata,i_new)
 		i_new+=1
 		tpdata=chan_data*((nchan_new-res)*1.0/nchan_new)
 		res=nchan0-(nchan_new-res)
 #
-info['nchan_new']=nchan_new
-info['nsub_new']=nsub_new
-info['nbin_new']=nbin_new
-info['npol_new']=npol_new
+if nchan_new==1:
+	data=d.period_scrunch()[:,:,0]
+	data[zchan]=0
+	base,bin0=ad.baseline(data.mean(0),pos=True)
+	spec=np.concatenate((data,data),axis=1)[:,bin0:(bin0+10)].mean(1)
+	info['spec']=list(spec)
+#
+info['nchan_new']=int(nchan_new)
+info['nsub_new']=int(nsub_new)
+info['nbin_new']=int(nbin_new)
+info['npol_new']=int(npol_new)
 info['freq_start']=freq_start
 info['freq_end']=freq_end
 info['compressed']=True

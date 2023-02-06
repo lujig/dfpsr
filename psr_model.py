@@ -3,8 +3,8 @@ import time_eph as te
 import subprocess as sp
 import psr_read as pr
 #
-dm_const=2.410330871e-4 # ??? not 1/4148.808
-dm_const_si=7.436e6
+dm_const=4148.8064224
+dm_const_si=7437506.761
 kpc2m = 3.08568025e19
 mas_yr2rad_s = 1.536281850e-16
 pxconv = 1.74532925199432958E-2/3600.0e3
@@ -57,7 +57,7 @@ class psr_timing:
 		sin_elevation=np.sin(source_elevation)
 		absolute_latitude=self.time.site_grs80.y/np.pi*180
 		ilat1=np.int32(np.floor(absolute_latitude/15.0)-1)
-		cos_phase=np.cos((self.time.ut1.mjd-53398)*2.9*np.pi/365.25)*np.sign(self.time.site_grs80.y)
+		cos_phase=np.cos((self.time.ut1.mjd-53398)*2.0*np.pi/365.25)*np.sign(self.time.site_grs80.y)
 		frac=0
 		if ilat1<0 or ilat1>=4: 
 			if ilat1<0: ilat1=ilat2=0
@@ -111,10 +111,10 @@ class psr_timing:
 		dmval+=dmdot # ??? this phrase in this position?
 		if self.psr.dm_s1yr:
 			dmval+=self.psr.dm_s1yr*np.sin(2*np.pi*dt)+self.psr.dm_c1yr*np.cos(2*np.pi*dt)
-		self.tdis1=dmval/dm_const/freqf**2*1e12
+		self.tdis1=dmval*dm_const/freqf**2*1e12
 		if self.psr.cm1:
 			cmval=(np.array([self.psr.cm1,self.psr.cm2,self.psr.cm3])*yrs[:,:3]).sum()
-			self.tdis1+=cmval/dm_const*(freqf*1e-6)**(-self.psr.cmidx)
+			self.tdis1+=cmval*dm_const*(freqf*1e-6)**(-self.psr.cmidx)
 		if self.psr.fddc:
 			self.tdis1+=self.psr.fddc/(freqf*1e-6)**self.psr.fddi
 			self.tdis1+=np.polyval(self.psr.fd[::-1],(freqf*1e-9))*(freqf*1e-9)
@@ -248,6 +248,14 @@ class psr_timing:
 				break
 			loop+=1
 		#
+		rca.change_unit(te.sl)
+		rcaxyz=rca.xyz()
+		self.dtdposequ=rcaxyz@self.psr.dpos('pos','ecl','equ').T
+		self.dtdposecl=rcaxyz@self.psr.dpos('pos','ecl','ecl').T
+		self.dtdvelequ=(rcaxyz*(delt-delt**2*pmrvrad).reshape(-1,1)-self.psr.vel.xyz()*(delt**2*rcos1).reshape(-1,1))@self.psr.dpos('vel','ecl','equ').T
+		self.dtdvelecl=(rcaxyz*(delt-delt**2*pmrvrad).reshape(-1,1)-self.psr.vel.xyz()*(delt**2*rcos1).reshape(-1,1))@self.psr.dpos('vel','ecl','ecl').T
+		self.dtdaccequ=0.5*delt.reshape(-1,1)**2*rcaxyz@self.psr.dpos('acc','ecl','equ').T
+		self.dtdaccecl=0.5*delt.reshape(-1,1)**2*rcaxyz@self.psr.dpos('acc','ecl','ecl').T
 		self.dt_ssb=dt_ssb-self.tropo_delay # -self.iono_delay # ???
 	#
 	def phase_der_para(self,paras):
@@ -270,10 +278,21 @@ class psr_timing:
 				ind1=np.where(np.array(paras)==para)[0][0]
 				ind2=np.where(all_bparas==para)[0][0]
 				deriv[ind1]=-binary_der[ind2]*self.dphasedt
-		nbparas={'f0','f1','f2','f3','f4','f5'}.intersection(paras)
-		for para in list(nbparas):
+		nfparas={'f0','f1','f2','f3','f4','f5'}.intersection(paras)
+		for para in list(nfparas):
 			ind=np.where(np.array(paras)==para)[0]
 			deriv[ind]=self.__getattribute__('dphased'+para)
+		npparas={'raj','decj','pmra','pmdec','pmra2','pmdec2','elong','elat','pmelong','pmelat','pmelong2','pmelat2'}.intersection(paras)
+		if npparas:
+			dphasedraj,dphaseddecj=self.dtdposequ.T*self.dphasedt
+			dphasedpmra,dphasedpmdec=self.dtdvelequ.T*self.dphasedt
+			dphasedpmra2,dphasedpmdec2=self.dtdaccequ.T*self.dphasedt
+			dphasedelong,dphasedelat=self.dtdposecl.T*self.dphasedt
+			dphasedpmelong,dphasedpmelat=self.dtdvelecl.T*self.dphasedt
+			dphasedpmelong2,dphasedpmelat2=self.dtdaccecl.T*self.dphasedt
+			for para in list(npparas):
+				ind=np.where(np.array(paras)==para)[0]
+				deriv[ind]=eval('dphased'+para)
 		return deriv
 	#
 	def compute_phase(self):
@@ -289,7 +308,7 @@ class psr_timing:
 		ff0=np.float64('0.'+tmp[1])
 		phase2=nf0*ftpd+ff0*ntpd+ftpd*ff0
 		phase2*=86400
-		phase0=te.time(ntpd*nf0*86400,np.zeros_like(ntpd),scale='phase',unit=1)
+		phase0=te.phase(ntpd*nf0*86400,np.zeros_like(ntpd))
 		phase0=phase0.add(phase2)
 		#
 		deltat=deltaT.mjd*deltaT.unit
@@ -364,17 +383,17 @@ class psr_timing:
 					phaseW+=self.psr.wave_sin[k]*np.sin(om_eff*dt)*self.psr.f0+self.psr.wave_cos[k]*np.cos(om_eff*dt)*self.psr.f0
 				elif self.psr.wave_scale==1:
 					freq=self.freq
-					phaseW+=(self.psr.wave_sin[k]*np.sin(om_eff*dt)*self.psr.f0+self.psr.wave_cos[k]*np.cos(om_eff*dt)*self.psr.f0)/(dm_const*freq**2)
+					phaseW+=(self.psr.wave_sin[k]*np.sin(om_eff*dt)*self.psr.f0+self.psr.wave_cos[k]*np.cos(om_eff*dt)*self.psr.f0)*dm_const/freq**2
 				elif self.psr.wave_scale==2:
 					freq=self.freq
 					phaseW+=self.psr.wave_sin[k]*np.sin(om_eff*dt)*self.psr.f0+self.psr.wave_cos[k]*np.cos(om_eff*dt)*self.psr.f0
-					phaseW+=(self.psr.wave_sin_dm[k]*np.sin(om_eff*dt)*self.psr.f0+self.psr.wave_cos_dm[k]*np.cos(om_eff*dt)*self.psr.f0)/(dm_const*freq**2)
+					phaseW+=(self.psr.wave_sin_dm[k]*np.sin(om_eff*dt)*self.psr.f0+self.psr.wave_cos_dm[k]*np.cos(om_eff*dt)*self.psr.f0)*dm_const/freq**2
 		if 'wave_om_dm' in self.psr.paras:
 			dt=self.bbat.minus(self.psr.wave_epoch).mjd
 			om=self.psr.wave_om_dm
 			om_eff=om*(1+k)
 			freq=self.freq
-			phaseW+=(self.psr.wave_sin_dm[k]*np.sin(om_eff*dt)*self.psr.f0+self.psr.wave_cos_dm[k]*np.cos(om_eff*dt)*self.psr.f0)/(dm_const*freq**2)
+			phaseW+=(self.psr.wave_sin_dm[k]*np.sin(om_eff*dt)*self.psr.f0+self.psr.wave_cos_dm[k]*np.cos(om_eff*dt)*self.psr.f0)*dm_const/freq**2
 		# quad_om
 		if 'quad_om' in self.psr.paras:
 			dt=self.bbat.minus(self.psr.quadepoch).mjd*86400
@@ -1518,9 +1537,9 @@ class psr_timing:
 			dsinidm2=x*m*(-darrdm2*m2-arr)/(arr*m2)**2
 			dkdm=3*(arr-darrdm*m)/(arr**2*(1-ecc**2))
 			dkdm2=3*m(-darrdm2)/(arr**2*(1-ecc**2))
-			dtdm=(-alpha*ecc*ddrdm+dtdeth*ecc*ddthdm+dtdgamma*dgammadm+dtdpbdot*dpbdotdm+dsdsini*dsinidm+dtdom*ae*dkdm)*sunmass
+			dtdmtot=(-alpha*ecc*ddrdm+dtdeth*ecc*ddthdm+dtdgamma*dgammadm+dtdpbdot*dpbdotdm+dsdsini*dsinidm+dtdom*ae*dkdm)*sunmass
 			dtdm2=(-alpha*ecc*ddrdm2+dtdeth*ecc*ddthdm2+dtdgamma*dgammadm2+dtdpbdot*dpbdotdm2+dsdsini*dsinidm2+dtdom*ae*dkdm2)*sunmass
-			return np.array([dtdt0,dtdpb,dtdecc,dtdom,dtda1,np.zeros_like(dtdt0),np.zeros_like(dtdt0),np.zeros_like(dtdt0),dtda1dot,dtdm,dtdm2,np.zeros_like(dtdt0),dtdedot])
+			return np.array([dtdt0,dtdpb,dtdecc,dtdom,dtda1,np.zeros_like(dtdt0),np.zeros_like(dtdt0),np.zeros_like(dtdt0),dtda1dot,dtdmtot,dtdm2,np.zeros_like(dtdt0),dtdedot])
 	#
 	def MSSmodel(self,der=False):
 		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
@@ -1620,7 +1639,7 @@ class psr_timing:
 			dtddtheta=-x*su*cw*eth/np.sqrt(1-eth**2)*ecc
 			dtda0=(np.sin(omega+ae)+ecc*sw)
 			dtdb0=(np.cos(omega+ae)+ecc*cw)
-			return np.array([dtdt0,dtdpb,dtdecc,dtda1,dtdom,dtdpbdot,np.zeros_like(dtdt0),dtdshapmax,dtda1dot,dtdomdot,dtdm2,dtdsini,dtdedot,dtdgamma,dtda2dot,dtde2dot,dtdorbpx, dtddr,dtdtheta,dtda0,dtdb0,dtdom2dot])
+			return np.array([dtdt0,dtdpb,dtdecc,dtda1,dtdom,dtdpbdot,np.zeros_like(dtdt0),dtdshapmax,dtda1dot,dtdomdot,dtdm2,dtdsini,dtdedot,dtdgamma,dtda2dot,dtde2dot,dtdorbpx, dtddr,dtddtheta,dtda0,dtdb0,dtdom2dot])
 	#
 	def T2model(self,der=False):
 		sunmass=self.time.cons['GMS']*aultsc/te.sl*1e4*te.iftek
@@ -1769,8 +1788,6 @@ class psr_timing:
 			drep=-alpha*su+bg*cu
 			drepp=-alpha*cu-bg*su
 			anhat=an/onemecu
-			dlogbr=np.log(brace)
-			ds=-2*m2*dlogbr
 		elif 'eps1' in self.psr.paras:
 			dre  = x*(np.sin(phase)-0.5*(eps1*np.cos(2.0*phase)-eps2*np.sin(2.0*phase)))
 			drep = x*np.cos(phase)
@@ -1808,41 +1825,48 @@ class psr_timing:
 			anhat=an
 			ecc=0.0
 			if ('h3' in self.psr.paras) and (('h4' in self.psr.paras) or ('stig' in self.psr.paras)):
-				h3=self.psr.h3
-				if self.psr.h4:
-					h4=self.psr.h4
-					mode=2
-					if 'nharm' in self.psr.paras:
-						nharm=self.nharm
-					if self.psr.stig: print("Warning: Both H4 and STIG in par file, then ignoring STIG")
-					si=2*h3*h4/(h3**2+h4**2)
-					m2=h3**4/h4**3
-				else:
-					if 'stig' in self.psr.paras:
-						stig=self.psr.stig
-						mode=1
-						si=2*stig/(1+stig**2)
-						m2=h3/stig**3
-					else:
-						mode,h4,nharm,stig=0,0,3,0
-				if si>1.0: si=1.0
-				brace=1-si*np.sin(phase)
-				dlogbr=np.log(brace)
-				trueanom=phase*1.0
 				ecc=np.sqrt(eps1**2+eps2**2)
 				omega=np.arctan2(eps1,eps2)
+		else:
+			raise Exception('Either DD or ELL1 model cannot be used.')
+		#
+		if ('h3' in self.psr.paras) and (('h4' in self.psr.paras) or ('stig' in self.psr.paras)):
+			h3=self.psr.h3
+			nharm=4
+			if self.psr.h4:
+				h4=self.psr.h4
+				mode=2
+				if 'nharm' in self.psr.paras:
+					nharm=self.nharm
+				if self.psr.stig: print("Warning: Both H4 and STIG in par file, then ignoring STIG")
+				si=2*h3*h4/(h3**2+h4**2)
+				m2=h3**4/h4**3
+			else:
+				if 'stig' in self.psr.paras:
+					stig=self.psr.stig
+					mode=1
+					si=2*stig/(1+stig**2)
+					m2=h3/stig**3
+				else:
+					mode,h4,nharm,stig=0,0,3,0
+			if si>1.0: si=1.0
+			brace=1-si*np.sin(phase)
+			dlogbr=np.log(brace)
+			trueanom=phase*1.0
+			if mode==0: ds=-4/3*h3*np.sin(trueanom)
+			elif mode==1:
 				fs=1.0+stig**2-2*stig*np.sin(trueanom)
 				lgf=np.log(fs)
 				lsc=lgf+2.0*stig*np.sin(trueanom)-stig**2*np.cos(2*trueanom)
-				if mode==0: ds=-4/3*h3*np.sin(trueanom)
-				elif mode==1: ds=-2*m2*lsc
-				else: ds=calcdh(trueanom,h3,h4,nharm,0)
-			else:
-				dlogbr=np.log(brace)
-				ds=-2*m2*dlogbr
+				ds=-2*m2*lsc
+			else: ds=calcdh(trueanom,h3,h4,nharm,0)
 		else:
-			raise Exception('Either DD or ELL1 model cannot be used.')
-		d2bar=dre*(1-anhat*drep+anhat**2*(drep**2+0.5*dre*drepp-0.5*ecc*su*dre*drep/onemecu))+ds+da+ddaop+ddsr+ddop
+			dlogbr=np.log(brace)
+			ds=-2*m2*dlogbr
+		if 'ecc' in self.psr.paras:
+			d2bar=dre*(1-anhat*drep+anhat**2*(drep**2+0.5*dre*drepp-0.5*ecc*su*dre*drep/onemecu))+ds+da+ddaop+ddsr+ddop
+		else:
+			d2bar=dre*(1-anhat*drep+anhat**2*(drep**2+0.5*dre*drepp))+ds+da+ddaop+ddsr+ddop
 		torb-=d2bar
 		if not der:
 			return torb
@@ -1908,7 +1932,7 @@ class psr_timing:
 					dtdh3,dtdh4=calcdh(trueanom,h3,h4,nharm,1)
 			else:
 				dtdh3,dtdh4,dtdstig=np.zeros_like(dtdtasc),np.zeros_like(dtdtasc),np.zeros_like(dtdtasc)
-			if 'kom' in self.psr.paras:
+			if ('kin' in self.psr.paras) and ('kom' in self.psr.paras):
 				if daop: tmp=1/daop
 				else: tmp=dpara
 				dk013 =-x*tmp/si*delta_i0*cos_omega
@@ -1959,11 +1983,11 @@ class psr_timing:
 				dsinidm2=x*m*(-darrdm2*m2-arr)/(arr*m2)**2
 				dkdm=3*(arr-darrdm*m)/(arr**2*(1-ecc**2))
 				dkdm2=3*m(-darrdm2)/(arr**2*(1-ecc**2))
-				dtdm=(-alpha*ecc*ddrdm+dtdeth*ecc*ddthdm+dtdgamma*dgammadm+dtdpbdot*dpbdotdm+dsdsini*dsinidm+dtdom*ae*dkdm)*sunmass
+				dtdmtot=(-alpha*ecc*ddrdm+dtdeth*ecc*ddthdm+dtdgamma*dgammadm+dtdpbdot*dpbdotdm+dsdsini*dsinidm+dtdom*ae*dkdm)*sunmass
 				dtdm2=(-alpha*ecc*ddrdm2+dtdeth*ecc*ddthdm2+dtdgamma*dgammadm2+dtdpbdot*dpbdotdm2+dsdsini*dsinidm2+dtdom*ae*dkdm2)*sunmass
 			else:
-				dtdm=np.zeros_like(dtdt0)
-			return np.array([dtdt0, dtdpb, np.zeros_like(dtdt0), dtdecc, dtda1, dtdom, dtdtasc, dtdeps1, dtdeps2, dtdshapmax, dtdkom, dtdkin, dtdh3, dtdstig, dtdh4, np.zeros_like(dtdt0), dtdm2, dtdm, np.zeros_like(dtdt0), dtdsini, dtdpbdot, dtda1dot, dtdomdot, dtdgamma, np.zeros_like(dtdt0), dtdbpjph, dtdbpja1, dtdbpjec, dtdbpjom, dtdbpjpb, dtdedot, dtddr, dtddth, dtda0, dtdb0, dtdeps1dot, dtdeps2dot, np.zeros_like(dtdt0), np.zeros_like(dtdt0), np.zeros_like(dtdt0), dtdpb2dot])
+				dtdmtot=np.zeros_like(dtdt0)
+			return np.array([dtdt0, dtdpb, np.zeros_like(dtdt0), dtdecc, dtda1, dtdom, dtdtasc, dtdeps1, dtdeps2, dtdshapmax, dtdkom, dtdkin, dtdh3, dtdstig, dtdh4, np.zeros_like(dtdt0), dtdm2, dtdmtot, np.zeros_like(dtdt0), dtdsini, dtdpbdot, dtda1dot, dtdomdot, dtdgamma, np.zeros_like(dtdt0), dtdbpjph, dtdbpja1, dtdbpjec, dtdbpjom, dtdbpjpb, dtdedot, dtddr, dtddth, dtda0, dtdb0, dtdeps1dot, dtdeps2dot, np.zeros_like(dtdt0), np.zeros_like(dtdt0), np.zeros_like(dtdt0), dtdpb2dot])
 	#
 	def T2_PTAmodel(self,der=False):
 		return 0

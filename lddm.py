@@ -10,6 +10,8 @@ import psr_model as pm
 import psr_read as pr
 import adfunc as af
 import time
+import matplotlib.pyplot as plt
+plt.rcParams['font.family']='Serif'
 #
 version='JigLu_20180515'
 parser=ap.ArgumentParser(prog='lddm',description='Calculate the best DM value. Press \'s\' in figure window to save figure.',epilog='Ver '+version)
@@ -21,6 +23,7 @@ parser.add_argument('-n',action='store_true',default=False,dest='norm',help='nor
 parser.add_argument('-t',action='store_true',default=False,dest='text',help='only print the result in text-form instead of plot')
 parser.add_argument('-f',default='',dest='file',help='output the results into a file')
 parser.add_argument('-m',action='store_true',default=False,dest='modify',help='add a parameter best_dm in the info of ld file')
+parser.add_argument('-c',action='store_true',default=False,dest='correct',help='correct the data with the best dm')
 parser.add_argument('-d','--dm_center',dest='dm',default=0,type=np.float64,help="center of the fitting dispersion measure")
 parser.add_argument('-i','--dm_zone',dest='zone',default=0,type=np.float64,help="total range of the fitting dispersion measure")
 parser.add_argument('-o','--polynomial_order',default=0,dest='n',type=int,help='fit the dm-maxima curve with Nth order polynomial')
@@ -76,6 +79,10 @@ if args.norm:
 	command.append('-n')
 if args.modify:
 	command.append('-m')
+if args.correct:
+	command.append('-c')
+if args.modify and args.correct:
+	parser.error('At most one of flags -m and -c is required.')
 command=' '.join(command)
 #
 if not args.text:
@@ -186,7 +193,7 @@ for psr_name in psrlist:
 			zchan1=np.int32(info['zchan'].split(','))
 		else:
 			zchan1=np.int32([])
-		zchan=set(zchan0).intersection(zchan1)
+		zchan=set(zchan0).union(zchan1)
 		if len(chan):
 			zchan=np.int32(list(zchan.intersection(chan)))-chanstart
 		else:
@@ -220,7 +227,7 @@ for psr_name in psrlist:
 		psr=pm.psr_timing(psr_para,te.times(te.time(np.float64(info['stt_time'])+np.float64(info['length'])/86400,0)),freq.mean())
 		fftdata=fft.rfft(data,axis=1)
 		tmp=np.shape(fftdata)[-1]
-		const=(1/(freq*psr.vchange)**2*4148.808/period*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
+		const=(1/(freq*psr.vchange)**2*pm.dm_const/period*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
 		#
 		if args.n:
 			order=args.n
@@ -245,6 +252,7 @@ for psr_name in psrlist:
 			ax.plot(dm+dm0,fitvalue,'k--')
 		if dmerr>0:
 			ndigit=int(-np.log10(dmerr))+2
+			ndigit=max(ndigit,0)
 			if args.file:
 				output.write(psr_para.name+'  '+filename+' DM_0='+str(dm0)+', Best DM='+str(np.round(dmmax+dm0,ndigit))+'+-'+str(np.round(dmerr,ndigit))+'\n')
 			if args.modify:
@@ -260,16 +268,39 @@ for psr_name in psrlist:
 					info['history']=command
 					info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
 				d.write_info(info)
+			elif args.correct:
+				info['dm']=dmmax+dm0
+				info['best_dm']=[dmmax+dm0,dmerr]
+				if 'history' in info.keys():
+					if type(info['history'])==list:
+						info['history'].append(command)
+						info['file_time'].append(time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()))
+					else:
+						info['history']=[info['history'],command]
+						info['file_time']=[info['file_time'],time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())]
+				else:
+					info['history']=command
+					info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
+				for i in np.arange(nchan):
+					data_tmp=d.read_chan(i)
+					fftdata0=fft.rfft(data_tmp,axis=1)
+					tmp=np.shape(fftdata)[1]
+					frac=1/(freq0[i]*psr.vchange)**2*pm.dm_const/period*dmmax
+					const=((frac*np.pi*2.0)*np.arange(tmp)).reshape(1,tmp,1)
+					ffts=fftdata0*np.exp(const*1j)
+					data_tmp=fft.irfft(ffts,axis=1)
+					d.write_chan(data_tmp,i)
+				d.write_info(info)
+			#
 			if not args.text:
 				ax.plot([dm0+dmmax,dm0+dmmax],[y0,y1],'k:')
 				ax.text(dm0+ddm,y0*0.95+y1*0.05,'DM$_0$='+str(dm0)+'\nBest DM='+str(np.round(dmmax+dm0,3))+'$\pm$'+str(np.round(dmerr,3)),horizontalalignment='center',verticalalignment='bottom',fontsize=25)
 				fftdata0=fft.rfft(data0,axis=1)
 				tmp=np.shape(fftdata)[-1]
-				frac=1/(freq0*psr.vchange)**2*4148.808/period*dmmax
+				frac=1/(freq0*psr.vchange)**2*pm.dm_const/period*dmmax
 				const=(frac*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
 				data1=shift(fftdata0,const)
-				if 'zchan' in info.keys():
-					data1=ma.masked_array(data1,mask=zaparray)
+				data1=ma.masked_array(data1,mask=zaparray)
 				ax1.imshow(data1[::-1],aspect='auto',interpolation='nearest',extent=(0,1,freq_start0,freq_end0),cmap='jet')
 				ax1.plot(np.ones_like(freq0)*0.5,freq0,'r--')
 				ax2.plot((frac+0.5)%1,freq0,'r--')
@@ -289,7 +320,7 @@ for psr_name in psrlist:
 			ax1.set_xlim(0,1)
 			#
 			def save_fig():
-				figname=raw_input("Please input figure name:")
+				figname=input("Please input figure name:")
 				if figname.split('.')[-1] not in ['ps','eps','png','pdf','pgf']:
 					figname+='.pdf'
 				fig.savefig(figname)

@@ -138,6 +138,8 @@ if args.cal:
 	if len(args.cal)==1:
 		if args.cal[0][-3:]=='.ld':
 			noise_mark='ld'
+			if not os.path.isfile(args.cal[0]):
+				parser.error('Calibration file name is invalid.')
 			noise=ld.ld(args.cal[0])
 			noise_info=noise.read_info()
 			if noise_info['mode']!='cal':
@@ -184,7 +186,7 @@ nchan_new=chanend-chanstart
 nbin=file_len.sum()*nsblk
 stt_time=file_t0[0]
 freq_start,freq_end=(np.array([chanstart,chanend])-0.5*nchan)*channel_width+freq
-info={'nbin_origin':nbin,'telename':telename,'freq_start':freq_start,'freq_end':freq_end,'nchan':chanend-chanstart,'tsamp_origin':tsamp,'stt_time_origin':stt_time,'stt_time':stt_time,'npol':npol}
+info={'nbin_origin':int(nbin),'telename':telename,'freq_start':freq_start,'freq_end':freq_end,'nchan':int(chanend-chanstart),'tsamp_origin':tsamp,'stt_time_origin':stt_time,'stt_time':stt_time,'npol':int(npol)}
 #
 if args.psr_name and args.par_file:
 	parser.error('At most one of flags -n and -p is required.')
@@ -260,10 +262,10 @@ if args.zap_file:
 	command.append('-z')
 	if not os.path.isfile(args.zap_file):
 		parser.error('The zap channel file is invalid.')
-	zchan=np.loadtxt(args.zap_file,dtype=np.int32)
+	zchan=np.loadtxt(args.zap_file,dtype=int)
 	if np.max(zchan)>=nchan or np.min(zchan)<0:
 		parser.error('The zapped channel number is overrange.')
-	info['zchan']=str(list(zchan))[1:-1]
+	info['zchan']=list(zchan)
 else:
 	zchan=[]
 name=args.output
@@ -322,8 +324,15 @@ def deal_seg(n1,n2):
 	sorts=np.argsort(tmp_noise)
 	noise_data,noise_cum=noise_data[sorts],noise_cum[sorts]
 	noisen_center=np.int64(noisen//2)
-	noise_off=noise_data[2:(noisen_center-1)].sum(0)/noise_cum[2:(noisen_center-1)].sum().reshape(-1,1)
-	noise_on=noise_data[(noisen_center+2):-2].sum(0)/noise_cum[(noisen_center+2):-2].sum().reshape(-1,1)-noise_off
+	if noisen>6:
+		noise_off=noise_data[2:(noisen_center-1)].sum(0)/noise_cum[2:(noisen_center-1)].sum().reshape(-1,1)
+		noise_on=noise_data[(noisen_center+2):-2].sum(0)/noise_cum[(noisen_center+2):-2].sum().reshape(-1,1)-noise_off
+	elif noisen>2:
+		sys.stdout.write('Warning: The noise data used in calulation is too short to get accurate calibration parameters.\n')
+		noise_off=noise_data[:noisen_center].sum(0)/noise_cum[:noisen_center].sum().reshape(-1,1)
+		noise_on=noise_data[(noisen_center+1):].sum(0)/noise_cum[(noisen_center+1):].sum().reshape(-1,1)-noise_off
+	else:
+		parser.error('The noise data used in calulation is too short.')
 	noise_a12,noise_a22=noise_on[:2]
 	noise_dphi=np.arctan2(noise_on[3],noise_on[2])
 	noise_cos,noise_sin=np.cos(noise_dphi),np.sin(noise_dphi)
@@ -355,7 +364,7 @@ if noise_mark=='fits':
 				noise_time[i]=(cumlen_noise[jumps[i+1]-1]+cumlen_noise[jumps[i]]+noise_len[jumps[i]]*tsamp/86400)/2
 			cal_mode='trend'
 		else:
-			if noise_len>1:
+			if noisenum>1:
 				noise_time=(cumlen_noise[-1]+noise_len[-1]*tsamp/86400)/2
 				noise_data=np.zeros([noisenum,4,nchan])
 				for i in np.arange(noisenum):
@@ -388,7 +397,7 @@ elif noise_mark=='ld':
 		cal_mode='trend'
 	elif noise_info['cal_mode']=='seg':
 		noise_time0=np.float64(noise_info['stt_time'])
-		noise_time=np.float64(noise_info['seg_time'])
+		noise_time=np.asarray(np.float64(noise_info['seg_time'])).reshape(-1)
 		noise_time_judge=((noise_time+noise_time0-file_t0[0])>(-cal_trend_eff/24.))&((noise_time+noise_time0-file_t0[-1])<(cal_trend_eff/24.))
 		noise_time_judge_1=((noise_time+noise_time0-file_t0[0])>(-cal_seg_eff/24.))&((noise_time+noise_time0-file_t0[-1])<(cal_seg_eff/24.))
 		noise_time_index=np.arange(len(noise_time))[noise_time_judge]
@@ -426,7 +435,7 @@ elif noise_mark=='ld':
 		parser.error('The calibration file mode is unknown.')
 if args.cal:
 	info['cal_mode']=cal_mode
-	info['cal']=list(map(str,noise_data.reshape(-1)))
+	info['cal']=list(noise_data)
 	if cal_mode=='single':
 		noise_a12,noise_a22,noise_cos,noise_sin=noise_data
 		noise_a12=np.where(noise_a12>0,1./noise_a12,0)
@@ -459,30 +468,30 @@ if args.period or (not pepoch):
 	phase=np.arange(nbin0)*tsamp/period
 	info['phase0']=0
 	nperiod=int(np.ceil(np.max(phase)))
-	stt_sec=time0[:-1].sum()-delay
+	stt_sec=time0[:-1].sum()-delay+offs_sub-tsamp*nsblk/2.0
 	stt_date=time0[-1]+stt_sec//86400
 	stt_sec=stt_sec%86400
 else:
 	chebx_test0=nc.chebpts1(args.ncoeff)
 	chebx_test=np.concatenate(([-1],chebx_test0,[1]),axis=0)
-	second_test=(chebx_test+1)/2*nbin0*tsamp+file_time[0][:-1].sum()-delay
+	second_test=(chebx_test+1)/2*nbin0*tsamp+file_time[0][:-1].sum()-delay+offs_sub-tsamp*nsblk/2.0
 	time_test=te.time(file_time[0][-1]*np.ones(args.ncoeff+2),second_test,scale='local')
 	times_test=te.times(time_test)
 	timing_test_end=pm.psr_timing(psr,times_test,freq_end)
 	timing_test_start=pm.psr_timing(psr,times_test,freq_start)
-	phase_start=timing_test_end.phase.date[0]+1
-	phase_end=timing_test_start.phase.date[-1]
-	phase=timing_test_end.phase.date-phase_start+timing_test_end.phase.second
+	phase_start=timing_test_end.phase.integer[0]+1
+	phase_end=timing_test_start.phase.integer[-1]
+	phase=timing_test_end.phase.integer-phase_start+timing_test_end.phase.offset
 	nperiod=phase_end-phase_start
-	period=((time_test.date[-1]-time_test.date[0])*time_test.unit+time_test.second[-1]-time_test.second[0])/(timing_test_end.phase.date[-1]-timing_test_end.phase.date[0]+timing_test_end.phase.second[-1]-timing_test_end.phase.second[0])
-	cheb_end=nc.chebfit(chebx_test,timing_test_end.phase.date-phase_start+timing_test_end.phase.second,args.ncoeff-1)
+	period=((time_test.date[-1]-time_test.date[0])*time_test.unit+time_test.second[-1]-time_test.second[0])/(timing_test_end.phase.integer[-1]-timing_test_end.phase.integer[0]+timing_test_end.phase.offset[-1]-timing_test_end.phase.offset[0])
+	cheb_end=nc.chebfit(chebx_test,timing_test_end.phase.integer-phase_start+timing_test_end.phase.offset,args.ncoeff-1)
 	roots=nc.chebroots(cheb_end)
 	roots=np.real(roots[np.isreal(roots)])
 	root=roots[np.argmin(np.abs(roots))]
-	stt_time_test=te.time(file_time[0][-1],(root+1)/2*nbin0*tsamp+file_time[0][:-1].sum()-delay,scale='local')
-	stt_sec=stt_time_test.second
-	stt_date=stt_time_test.date
-	info['phase0']=phase_start
+	stt_time_test=te.time(file_time[0][-1],(root+1)/2*nbin0*tsamp+file_time[0][:-1].sum()-delay+offs_sub-tsamp*nsblk/2.0,scale='local')
+	stt_sec=stt_time_test.second[0]
+	stt_date=stt_time_test.date[0]
+	info['phase0']=int(phase_start)
 	ncoeff_freq=10
 	phase_tmp=np.zeros([ncoeff_freq,args.ncoeff+2])
 	disp_tmp=np.zeros(ncoeff_freq)
@@ -491,17 +500,17 @@ else:
 	for i in np.arange(ncoeff_freq):
 		timing_test=pm.psr_timing(psr,times_test,freqy[i])
 		disp_tmp[i]=((timing_test.tdis1+timing_test.tdis2)/period).mean()
-		phase_tmp[i]=timing_test.phase.date-phase_start+timing_test.phase.second+disp_tmp[i]
+		phase_tmp[i]=timing_test.phase.integer-phase_start+timing_test.phase.offset+disp_tmp[i]
 	coeff_freq=np.polyfit(1/freqy,disp_tmp,4)
 	coeff=nc.chebfit(chebx_test,nc.chebfit(cheby,phase_tmp,1).T,args.ncoeff-1)
 	info['predictor']=list(map(list,coeff))
 	info['predictor_freq']=list(coeff_freq)
 #
-info['stt_sec']=stt_sec[0]
-info['stt_date']=stt_date[0]
-info['stt_time']=stt_date[0]+stt_sec[0]/86400.0
+info['stt_sec']=stt_sec
+info['stt_date']=int(stt_date)
+info['stt_time']=stt_date+stt_sec/86400.0
 #
-info['nperiod']=nperiod
+info['nperiod']=int(nperiod)
 info['period']=period
 #
 nbin_max=(nbin0-1)/(np.max(phase)-np.min(phase))
@@ -514,7 +523,7 @@ if args.nbin:
 else:
 	nbin=2**np.int16(np.log2(nbin_max))
 	temp_multi=1
-info['nbin']=nbin
+info['nbin']=int(nbin)
 info['length']=period*nperiod
 #
 totalbin=nperiod*nbin*temp_multi
@@ -527,18 +536,18 @@ if info['mode']=='subint':
 	info['nsub']=int(np.ceil(nperiod*1.0/sub_nperiod))
 	tpsub=np.zeros([nchan_new,npol,nbin],dtype=np.float64)
 	sub_nperiod_last=(nperiod-1)%sub_nperiod+1
-	info['sub_nperiod']=sub_nperiod
-	info['sub_nperiod_last']=sub_nperiod_last
+	info['sub_nperiod']=int(sub_nperiod)
+	info['sub_nperiod_last']=int(sub_nperiod_last)
 	tpsubn=np.zeros(nchan_new)
 elif info['mode']=='single':
-	info['nsub']=nperiod
+	info['nsub']=int(nperiod)
 info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
 d.write_shape([nchan_new,info['nsub'],nbin,npol])
 #
 def write_data(ldfile,data,startbin,channum,lock=0):
-	if args.multi: lock.acquire()
+	#if args.multi: lock.acquire()
 	d.__write_chanbins_add__(data.T,startbin,channum)
-	if args.multi: lock.release()
+	#if args.multi: lock.release()
 #
 def gendata(cums,data,tpsub=0,tpsubn=0,last=False,first=True,lock=0):
 	if args.reverse or (not bw_sign):
@@ -556,7 +565,7 @@ def gendata(cums,data,tpsub=0,tpsubn=0,last=False,first=True,lock=0):
 		if f+chanstart in zchan: continue
 		if args.period:
 			if dm:
-				phase=(dt+dm/df[f]**2*4148.808)/period
+				phase=(dt+dm/df[f]**2*pm.dm_const)/period
 			else:
 				phase=dt/period
 		else:
@@ -572,7 +581,7 @@ def gendata(cums,data,tpsub=0,tpsubn=0,last=False,first=True,lock=0):
 			startphase,phaseres0=divmod(newphase[0],temp_multi)
 			phaseres0=np.int64(phaseres0)
 			nphase=np.int64(np.ceil((newphase[-1]+1-newphase[0]+phaseres0)*1.0/temp_multi))
-			tpdata=np.concatenate((np.zeros([npol,phaseres0]),tpdata,np.zeros([npol,nphase*temp_multi-newphase[-1]-1+newphase[0]-phaseres0])),axis=1).reshape(npol,nphase,temp_multi).sum(2)
+			tpdata=np.concatenate((np.zeros([npol,phaseres0]),tpdata,np.zeros([npol,nphase*temp_multi-newphase[-1]-1+newphase[0]-phaseres0])),axis=1).reshape(npol,nphase,temp_multi).mean(2)
 		else:
 			startphase=newphase[0]
 			nphase=newphase.size
@@ -622,7 +631,7 @@ def gendata(cums,data,tpsub=0,tpsubn=0,last=False,first=True,lock=0):
 					write_data(d,file_sub_data[:,:-1].reshape(npol,-1),startsub*nbin,f,lock=lock)
 					tpsub[f]=file_sub_data[:,-1]
 					tpsubn[f]=startsub+file_nsub-1
-					if args.multi and last:
+					if last:
 						write_data(d,tpsub[f],tpsubn[f]*nbin,f,lock=lock)
 			else:
 				if file_nperiod>1:
@@ -634,7 +643,7 @@ def gendata(cums,data,tpsub=0,tpsubn=0,last=False,first=True,lock=0):
 						tpsub[f]+=tpdata[:,phaseres_left:phaseres_right].reshape(npol,file_nperiod-2,nbin).sum(1)
 				else:
 					tpsub[f,:,phaseres1:(phaseres1+tpdata.shape[1])]+=tpdata
-				if args.multi and last:
+				if last:
 					write_data(d,tpsub[f],startsub*nbin,f,lock=lock)
 	return tpsub,tpsubn
 #
@@ -650,7 +659,7 @@ def dealdata(filelist,n,lock=0):
 		timemark=time.time()
 	if info['mode']=='subint':
 		tpsub=np.zeros([nchan_new,npol,nbin],dtype=np.float64)
-		tpsubn=np.zeros(nchan_new)
+		tpsubn=np.zeros(nchan_new,dtype=np.int64)
 	elif info['mode']=='single':
 		tpsub=0
 		tpsubn=0
@@ -715,6 +724,8 @@ if args.multi:
 #
 if args.cal:
 	info['pol_type']='IQUV'
+	if cal_mode=='trend':
+		info['noise_time0']=noise_time0
 else:
 	info['pol_type']=pol_type
 d.write_info(info)
