@@ -146,7 +146,7 @@ if args.cal:
 				parser.error("LD file is not caliration file.")
 			elif telename!=noise_info['telename']:
 				parser.error("LD calibration file has different telescope name.")
-			elif nchan!=int(noise_info['nchan']):
+			elif nchan!=noise_info['nchan']:
 				parser.error("LD calibration file has different channel number.")
 		else:
 			noise_mark='fits'
@@ -265,7 +265,7 @@ if args.zap_file:
 	zchan=np.loadtxt(args.zap_file,dtype=int)
 	if np.max(zchan)>=nchan or np.min(zchan)<0:
 		parser.error('The zapped channel number is overrange.')
-	info['zchan']=list(zchan)
+	info['zchan']=zchan.tolist()
 else:
 	zchan=[]
 name=args.output
@@ -291,7 +291,7 @@ if args.multi:
 	command.append('-m '+str(args.multi))
 #
 command=' '.join(command)
-info['history']=command
+info['history']=[command]
 #
 def deal_seg(n1,n2):
 	cumsub=0
@@ -389,15 +389,15 @@ if noise_mark=='fits':
 		cal_mode='single'
 elif noise_mark=='ld':
 	if noise_info['cal_mode']=='trend':
-		noise_time0=np.float64(noise_info['stt_time'])
-		noise_time=np.float64(noise_info['seg_time'])
+		noise_time0=noise_info['stt_time']
+		noise_time=noise_info['seg_time']
 		if file_t0[0]<((1.25*noise_time[0]-0.25*noise_time[-1])+noise_time0) or file_t0[-1]>((1.25*noise_time[-1]-0.25*noise_time[0])+noise_time0):
 			parser.error('The file time is out of the extrapolating range.')
 		noise_data=noise.read_data().reshape(nchan,2,4).transpose(1,2,0)
 		cal_mode='trend'
 	elif noise_info['cal_mode']=='seg':
-		noise_time0=np.float64(noise_info['stt_time'])
-		noise_time=np.asarray(np.float64(noise_info['seg_time'])).reshape(-1)
+		noise_time0=noise_info['stt_time']
+		noise_time=noise_info['seg_time']
 		noise_time_judge=((noise_time+noise_time0-file_t0[0])>(-cal_trend_eff/24.))&((noise_time+noise_time0-file_t0[-1])<(cal_trend_eff/24.))
 		noise_time_judge_1=((noise_time+noise_time0-file_t0[0])>(-cal_seg_eff/24.))&((noise_time+noise_time0-file_t0[-1])<(cal_seg_eff/24.))
 		noise_time_index=np.arange(len(noise_time))[noise_time_judge]
@@ -435,7 +435,7 @@ elif noise_mark=='ld':
 		parser.error('The calibration file mode is unknown.')
 if args.cal:
 	info['cal_mode']=cal_mode
-	info['cal']=list(noise_data)
+	info['cal']=noise_data.reshape(-1,nchan).tolist()
 	if cal_mode=='single':
 		noise_a12,noise_a22,noise_cos,noise_sin=noise_data
 		noise_a12=np.where(noise_a12>0,1./noise_a12,0)
@@ -503,8 +503,8 @@ else:
 		phase_tmp[i]=timing_test.phase.integer-phase_start+timing_test.phase.offset+disp_tmp[i]
 	coeff_freq=np.polyfit(1/freqy,disp_tmp,4)
 	coeff=nc.chebfit(chebx_test,nc.chebfit(cheby,phase_tmp,1).T,args.ncoeff-1)
-	info['predictor']=list(map(list,coeff))
-	info['predictor_freq']=list(coeff_freq)
+	info['predictor']=coeff.tolist()
+	info['predictor_freq']=coeff_freq.tolist()
 #
 info['stt_sec']=stt_sec
 info['stt_date']=int(stt_date)

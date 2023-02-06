@@ -106,21 +106,21 @@ def ld_check(fname,notfirst=True,filetype='Ld file'):
 	else:
 		parser.error(filetype+' '+fname+' is not calibration file.')
 	if not notfirst:
-		telename,npol,nchan,freq_start,freq_end=finfo['telename'],np.int16(finfo['npol']),np.int16(finfo['nchan']),np.float64(finfo['freq_start']),np.float64(finfo['freq_end'])
+		telename,npol,nchan,freq_start,freq_end=finfo['telename'],finfo['npol'],finfo['nchan'],finfo['freq_start'],finfo['freq_end']
 	else:
 		if telename!=finfo['telename']:
 			file_error('telescope name',filetype)
-		if npol!=np.int16(finfo['npol']):
+		if npol!=finfo['npol']:
 			file_error('number of polorisations',filetype)
-		if nchan!=np.int16(finfo['nchan']):
+		if nchan!=finfo['nchan']:
 			file_error('number of channels',filetype)
-		if (freq_start-np.float64(finfo['freq_start']))>1e-3:
+		if (freq_start-finfo['freq_start'])>1e-3:
 			file_error('start frequency',filetype)
-		if (freq_end-np.float64(finfo['freq_end']))>1e-3:
+		if (freq_end-finfo['freq_end'])>1e-3:
 			file_error('end frequency',filetype)
 		#
-	flen=np.float64(finfo['length'])
-	stt_time=np.float64(finfo['stt_time'])
+	flen=finfo['length']
+	stt_time=finfo['stt_time']
 	seg_time=list(np.float64([finfo['seg_time']]).reshape(-1)+stt_time)
 #
 for i in np.arange(filenum):
@@ -199,7 +199,7 @@ d=ld.ld(name+'.ld')
 if args.trend:
 	command.append('-t')
 command=' '.join(command)
-info['history']=command
+info['history']=[command]
 #
 sys.stdout.write('Processing the noise file...\n')
 #
@@ -296,4 +296,5 @@ elif mark=='ld':
 			d.write_period(noise_data[i],i)
 #
 info['seg_time']=list(noise_time)
+info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
 d.write_info(info)

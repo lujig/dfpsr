@@ -98,18 +98,18 @@ for psr_name in psrlist:
 		d=ld.ld(filename)
 		info=d.read_info()
 		if 'compressed' in info.keys():
-			nchan=int(info['nchan_new'])
-			nbin=int(info['nbin_new'])
-			nsub=int(info['nsub_new'])
+			nchan=info['nchan_new']
+			nbin=info['nbin_new']
+			nsub=info['nsub_new']
 		else:
-			nchan=int(info['nchan'])
-			nbin=int(info['nbin'])
-			nsub=int(info['nsub'])
+			nchan=info['nchan']
+			nbin=info['nbin']
+			nsub=info['nsub']
 		if len(zchan0):
 			if np.max(zchan0)>=nchan or np.min(zchan0)<0:
 				parser.error('The zapped channel number is overrange.')
-		dm0=np.float64(info['dm'])
-		period=np.float64(info['period'])
+		dm0=info['dm']
+		period=info['period']
 		if args.dm:
 			ddm=args.dm-dm0
 		else:
@@ -120,8 +120,8 @@ for psr_name in psrlist:
 		else:
 			zone=np.max([0.1,dm0/100])
 			zone=np.min([0.5,zone])
-		freq_start0=np.float64(info['freq_start'])
-		freq_end0=np.float64(info['freq_end'])
+		freq_start0=info['freq_start']
+		freq_end0=info['freq_end']
 		channel_width=(freq_end0-freq_start0)/nchan
 		freq0=np.arange(freq_start0,freq_end0,channel_width)+channel_width/2.0
 		if args.frequency:
@@ -190,7 +190,7 @@ for psr_name in psrlist:
 			ax2.set_ylabel('Frequency (MHz)',fontsize=25)
 		#
 		if 'zchan' in info.keys():
-			zchan1=np.int32(info['zchan'].split(','))
+			zchan1=np.int32(info['zchan'])
 		else:
 			zchan1=np.int32([])
 		zchan=set(zchan0).union(zchan1)
@@ -224,7 +224,7 @@ for psr_name in psrlist:
 			fftr=fft.irfft(ffts)
 			return fftr
 		#
-		psr=pm.psr_timing(psr_para,te.times(te.time(np.float64(info['stt_time'])+np.float64(info['length'])/86400,0)),freq.mean())
+		psr=pm.psr_timing(psr_para,te.times(te.time(info['stt_time']+info['length']/86400,0)),freq.mean())
 		fftdata=fft.rfft(data,axis=1)
 		tmp=np.shape(fftdata)[-1]
 		const=(1/(freq*psr.vchange)**2*pm.dm_const/period*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
@@ -258,29 +258,21 @@ for psr_name in psrlist:
 			if args.modify:
 				info['best_dm']=[dmmax+dm0,dmerr]
 				if 'history' in info.keys():
-					if type(info['history'])==list:
-						info['history'].append(command)
-						info['file_time'].append(time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()))
-					else:
-						info['history']=[info['history'],command]
-						info['file_time']=[info['file_time'],time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())]
+					info['history'].append(command)
+					info['file_time'].append(time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()))
 				else:
-					info['history']=command
-					info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
+					info['history']=[command]
+					info['file_time']=[time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())]
 				d.write_info(info)
 			elif args.correct:
 				info['dm']=dmmax+dm0
 				info['best_dm']=[dmmax+dm0,dmerr]
 				if 'history' in info.keys():
-					if type(info['history'])==list:
-						info['history'].append(command)
-						info['file_time'].append(time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()))
-					else:
-						info['history']=[info['history'],command]
-						info['file_time']=[info['file_time'],time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())]
+					info['history'].append(command)
+					info['file_time'].append(time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()))
 				else:
-					info['history']=command
-					info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
+					info['history']=[command]
+					info['file_time']=[time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())]
 				for i in np.arange(nchan):
 					data_tmp=d.read_chan(i)
 					fftdata0=fft.rfft(data_tmp,axis=1)

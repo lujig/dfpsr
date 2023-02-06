@@ -265,11 +265,11 @@ class ld():
 			raise Exception('Wrong parameter name.')
 #
 ldinfo_keys={'best_dm':[list,[2],float],
- 'cal':[list,[4,'nchan'],float]
+ 'cal':[list,['1 or 2',4,'nchan'],float]
  'cal_mode':str,
  'compressed':bool,
  'dm':float,
- 'file_time':str,
+ 'file_time':[list,['number_of_processing'],str],
  'freq_end':float,
  'freq_start':float,
  'history':[list,['number_of_processing'],str],

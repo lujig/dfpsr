@@ -24,36 +24,36 @@ for ldfile in filelist:
 	for pname in plist:
 		if pname=='nsub':
 			if 'compressed' in info.keys():
-				sys.stdout.write(pname+' '+info['nsub_new']+'\n')
+				sys.stdout.write(pname+' '+str(info['nsub_new'])+'\n')
 			else:
-				sys.stdout.write(pname+' '+info['nsub']+'\n')
+				sys.stdout.write(pname+' '+str(info['nsub'])+'\n')
 		elif pname=='nchan':
 			if 'compressed' in info.keys():
-				sys.stdout.write(pname+' '+info['nchan_new']+'\n')
+				sys.stdout.write(pname+' '+str(info['nchan_new'])+'\n')
 			else:
-				sys.stdout.write(pname+' '+info['nchan']+'\n')
+				sys.stdout.write(pname+' '+str(info['nchan'])+'\n')
 		elif pname=='nbin':
 			if 'compressed' in info.keys():
-				sys.stdout.write(pname+' '+info['nbin_new']+'\n')
+				sys.stdout.write(pname+' '+str(info['nbin_new'])+'\n')
 			else:
-				sys.stdout.write(pname+' '+info['nbin']+'\n')
+				sys.stdout.write(pname+' '+str(info['nbin'])+'\n')
 		elif pname=='npol':
 			if 'compressed' in info.keys():
-				sys.stdout.write(pname+' '+info['npol_new']+'\n')
+				sys.stdout.write(pname+' '+str(info['npol_new'])+'\n')
 			else:
-				sys.stdout.write(pname+' '+info['npol']+'\n')
+				sys.stdout.write(pname+' '+str(info['npol'])+'\n')
 		elif pname=='shape':
 			sys.stdout.write(pname+' '+str(tuple(d.read_shape()))+'\n')
 		elif pname in ['stt_time', 'file_time', 'psr_name', 'nperiod', 'period', 'dm', 'length', 'mode']:
 			sys.stdout.write(pname+' '+info[pname]+'\n')
 		elif pname=='freq':
-			sys.stdout.write(pname+' '+str((np.float64(info['freq_end'])+np.float64(info['freq_start']))/2)+'\n')
+			sys.stdout.write(pname+' '+str((info['freq_end']+info['freq_start'])/2)+'\n')
 		elif pname=='bw':
-			sys.stdout.write(pname+' '+str(np.float64(info['freq_end'])-np.float64(info['freq_start']))+'\n')
+			sys.stdout.write(pname+' '+str(info['freq_end']-info['freq_start'])+'\n')
 		elif pname=='begin_end':
-			sys.stdout.write(pname+' '+str(np.int64(info['phase0']))+'  '+str(np.int64(info['phase0'])+np.int64(info['nperiod']))+'\n')
+			sys.stdout.write(pname+' '+str(info['phase0'])+'  '+str(info['phase0']+info['nperiod'])+'\n')
 		elif pname=='phase0':
-			sys.stdout.write(pname+' '+str(np.int64(info['phase0']))+'\n')
+			sys.stdout.write(pname+' '+str(info['phase0'])+'\n')
 		elif pname in info.keys():
 			if pname=='zchan':
 				sys.stdout.write('The zapped channels can not be shown.'+'\n')

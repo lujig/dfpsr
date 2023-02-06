@@ -98,11 +98,11 @@ def ld_check(fname,filetype='Ld file',notfirst=True):
 		dm=psr.dm
 	#
 	if 'compressed' in finfo.keys():
-		nchan=int(finfo['nchan_new'])
-		nperiod=int(finfo['nsub_new'])
+		nchan=finfo['nchan_new']
+		nperiod=finfo['nsub_new']
 	else:
-		nchan=int(finfo['nchan'])
-		nperiod=int(finfo['nsub'])
+		nchan=finfo['nchan']
+		nperiod=finfo['nsub']
 	#
 	if args.zap_file:
 		if np.max(zchan)>=nchan or np.min(zchan)<0: parser.error('The zapped channel number is overrange.')
@@ -117,7 +117,7 @@ def ld_check(fname,filetype='Ld file',notfirst=True):
 	elif args.subint_range: nsub_new.append(sub_end_tmp-sub_start)
 	else: nsub_new.append(nperiod)
 	#
-	freq_start,freq_end=np.float64(finfo['freq_start']),np.float64(finfo['freq_end'])
+	freq_start,freq_end=finfo['freq_start'],finfo['freq_end']
 	freq=(freq_start+freq_end)/2.0
 	channel_width=(freq_end-freq_start)/nchan
 	if notfirst:
@@ -219,21 +219,21 @@ for k in np.arange(filenum):
 	info=d.read_info()
 	#
 	if 'compressed' in info.keys():
-		nchan=int(info['nchan_new'])
-		nbin=int(info['nbin_new'])
-		nperiod=int(info['nsub_new'])
-		npol=int(info['npol_new'])
+		nchan=info['nchan_new']
+		nbin=info['nbin_new']
+		nperiod=info['nsub_new']
+		npol=info['npol_new']
 	else:
-		nchan=int(info['nchan'])
-		nbin=int(info['nbin'])
-		nperiod=int(info['nsub'])
-		npol=int(info['npol'])
+		nchan=info['nchan']
+		nbin=info['nbin']
+		nperiod=info['nsub']
+		npol=info['npol']
 	#
 	if args.zap_file:
 		if 'zchan' in info.keys():
-			zchan_tmp=np.array(list(set(map(int,info['zchan'].split(','))).union(zchan)))
+			zchan_tmp=np.array(list(set(info['zchan']).union(zchan)))
 	elif 'zchan' in info.keys():
-		zchan_tmp=np.int32(info['zchan'].split(','))
+		zchan_tmp=info['zchan']
 	else:
 		zchan_tmp=np.int32([])
 	#
@@ -246,7 +246,7 @@ for k in np.arange(filenum):
 	else:
 		sub_s,sub_e=0,nperiod
 	#
-	freq_start,freq_end=np.float64(info['freq_start']),np.float64(info['freq_end'])
+	freq_start,freq_end=info['freq_start'],info['freq_end']
 	freq=(freq_start+freq_end)/2.0
 	channel_width=(freq_end-freq_start)/nchan
 	chanstart,chanend=np.int16(np.round((np.array([max(freq_s,freq_start),min(freq_e,freq_end)])-freq)/channel_width+0.5*nchan))
@@ -266,10 +266,10 @@ for k in np.arange(filenum):
 				discard+=1
 				continue
 			if 'best_dm' in info.keys():
-				ddm=np.float64(info['best_dm'][0])-np.float64(info['dm'])
+				ddm=info['best_dm'][0]-info['dm']
 			else:
-				ddm,ddmerr=dmcor(data1,freq_real,rchan,np.float64(info['period']),output=0)
-			const=(1/freq_real**2*pm.dm_const/np.float64(info['period'])*np.pi*2.0)*ddm
+				ddm,ddmerr=dmcor(data1,freq_real,rchan,info['period'],output=0)
+			const=(1/freq_real**2*pm.dm_const/info['period']*np.pi*2.0)*ddm
 		else:
 			data1=d.period_scrunch(sub_s,sub_e)[chanstart:chanend,:,0]
 			if np.any(np.isnan(data1)) or np.any(np.isinf(data1)):
@@ -486,7 +486,7 @@ if args.freqtem:
 	else: prof[1:]=shift(prof[1:],-dt*2*np.pi)
 
 if np.sum(prof**2)==0: parser.error('Unexpected error. The produced profile is zero in every phase bin.')
-info={'mode':'template','nchan_new':int(nchan_res), 'nbin_new':int(args.nbin), 'npol_new':1, 'file_time':time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()), 'pol_type':'I','compressed':True,'history':command,'psr_name':psrname,'freq_start':freq_s,'freq_end':freq_e,'length':1}
+info={'mode':'template','nchan_new':int(nchan_res), 'nbin_new':int(args.nbin), 'npol_new':1, 'file_time':[time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())], 'pol_type':'I','compressed':True,'history':[command],'psr_name':psrname,'freq_start':freq_s,'freq_end':freq_e,'length':1}
 do=ld.ld(name+'.ld')
 
 if args.component:

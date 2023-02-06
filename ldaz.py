@@ -187,7 +187,7 @@ for i in filelist:
 	d=dfile.period_scrunch()[:,:,0]
 	info=dfile.read_info()
 	nchan,nperiod,nbin0,npol=dfile.read_shape()
-	cal=np.float64(info['cal'])[-nchan*4:].reshape(4,-1)
+	cal=info['cal'][-4:].reshape(4,-1)
 	aa,bb,cr,ci=cal
 	jc=calzap(aa,bb,cr,ci)&(d.mean(1)>0)
 	if jc.sum()==0:
@@ -207,22 +207,18 @@ for i in filelist:
 	tmp[np.arange(nchan,dtype=np.int32)[jc][j1]]=False
 	zchan0=np.arange(nchan,dtype=np.int32)[tmp]
 	if 'zchan' in info.keys():
-		zchan1=np.int32(info['zchan'].split(','))
+		zchan1=info['zchan']
 	else:
 		zchan1=np.int32([])
 	zchan=list(set(zchan0).union(zchan1))
 	if args.modify or args.correct:
-		info['zchan']=list(zhan)
+		info['zchan']=list(zchan)
 		if 'history' in info.keys():
-			if type(info['history'])==list:
-				info['history'].append(command)
-				info['file_time'].append(time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()))
-			else:
-				info['history']=[info['history'],command]
-				info['file_time']=[info['file_time'],time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())]
+			info['history'].append(command)
+			info['file_time'].append(time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()))
 		else:
-			info['history']=command
-			info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
+			info['history']=[command]
+			info['file_time']=[time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())]
 		if args.correct:
 			for k in zchan:
 				dfile.write_chan(np.zeros([nperiod,nbin0,npol]),k)

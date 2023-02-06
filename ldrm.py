@@ -95,29 +95,29 @@ for psr_name in psrlist:
 		psr_para=pr.psr(psr_par)
 		d=ld.ld(filename)
 		info=d.read_info()
-		if 'rm' in info.keys(): rm0=np.float64(info['rm'][0])
+		if 'rm' in info.keys(): rm0=info['rm'][0]
 		else: rm0=0
 		if 'compressed' in info.keys():
-			nchan=int(info['nchan_new'])
-			nbin=int(info['nbin_new'])
-			nsub=int(info['nsub_new'])
+			nchan=info['nchan_new']
+			nbin=info['nbin_new']
+			nsub=info['nsub_new']
 		else:
-			nchan=int(info['nchan'])
-			nbin=int(info['nbin'])
-			nsub=int(info['nsub'])
+			nchan=info['nchan']
+			nbin=info['nbin']
+			nsub=info['nsub']
 		if len(zchan0):
 			if np.max(zchan0)>=nchan or np.min(zchan0)<0:
 				parser.error('The zapped channel number is overrange.')
-		dm0=np.float64(info['dm'])
-		period=np.float64(info['period'])
+		dm0=info['dm']
+		period=info['period']
 		#
 		if args.zone:
 			zone=args.zone/2
 		else:
 			zone=np.max([0.1,dm0/100])
 			zone=np.min([0.5,zone])
-		freq_start0=np.float64(info['freq_start'])
-		freq_end0=np.float64(info['freq_end'])
+		freq_start0=info['freq_start']
+		freq_end0=info['freq_end']
 		channel_width=(freq_end0-freq_start0)/nchan
 		freq0=np.arange(freq_start0,freq_end0,channel_width)+channel_width/2.0
 		if args.frequency:
@@ -245,15 +245,11 @@ for psr_name in psrlist:
 			info['rm']=[best_rm,rmerr]
 			lam0=c/freq0/1e6
 			if 'history' in info.keys():
-				if type(info['history'])==list:
-					info['history'].append(command)
-					info['file_time'].append(time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()))
-				else:
-					info['history']=[info['history'],command]
-					info['file_time']=[info['file_time'],time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())]
+				info['history'].append(command)
+				info['file_time'].append(time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()))
 			else:
-				info['history']=command
-				info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
+				info['history']=[command]
+				info['file_time']=[time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())]
 			for i in np.arange(nchan):
 				data_tmp=d.read_chan(i)
 				dphi0=rot(lam0[i]**2,rm,0)*2

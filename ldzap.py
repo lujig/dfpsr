@@ -25,18 +25,18 @@ d=ld.ld(args.filename)
 info=d.read_info()
 #
 if 'compressed' in info.keys():
-	nchan=int(info['nchan_new'])
-	nbin=int(info['nbin_new'])
-	nperiod=int(info['nsub_new'])
+	nchan=info['nchan_new']
+	nbin=info['nbin_new']
+	nperiod=info['nsub_new']
 else:
-	nchan=int(info['nchan'])
+	nchan=info['nchan']
 	if info['mode']=='test':
 		nbin=1
-		nperiod=int(d.read_shape()[1])
+		nperiod=d.read_shape()[1]
 	else:
-		nbin=int(info['nbin'])
-		nperiod=int(info['nsub'])
-npol=int(info['npol'])
+		nbin=info['nbin']
+		nperiod=info['nsub']
+npol=info['npol']
 if nbin!=1:
 	data0=d.period_scrunch()[:,:,0]
 else:
@@ -52,7 +52,7 @@ else:
 testdata=copy.deepcopy(data)
 testdata=ma.masked_where(testdata<0,testdata)
 if 'zchan' in info.keys():
-	zaplist=[list(map(int,info['zchan'].split(',')))]
+	zaplist=[list(map(int,info['zchan']))]
 	zapnum=zaplist[0]
 	zaparray=np.zeros_like(testdata)
 	zaparray[zapnum,:]=True
@@ -89,15 +89,15 @@ cali=args.cal
 if args.cal:
 	if 'cal' not in info.keys():
 		parser.error('The file information does not contain calibration parameters.')
-	nchan0=int(info['nchan'])
+	nchan0=info['nchan']
 	if info['cal_mode']=='single':
-		cal=np.float64(info['cal']).reshape(4,nchan0).T
+		cal=info['cal'].T
 	else:
-		noisedt=np.float64(info['stt_time'])+np.float64(info['length'])/2/86400-np.float64(info['noise_time0'])
-		cal=np.polyval(np.float64(info['cal']).reshape(2,4,nchan0),noisedt).T
+		noisedt=info['stt_time']+info['length']/2/86400-info['noise_time0']
+		cal=np.polyval(info['cal'],noisedt).T
 	cal0=np.concatenate((np.zeros([1,4]),cal.repeat(2,axis=0),np.zeros([1,4])),axis=0)
 	cal1=copy.deepcopy(cal0)
-freq_start,freq_end=np.float64(info['freq_start']),np.float64(info['freq_end'])
+freq_start,freq_end=info['freq_start'],info['freq_end']
 ylim0=[freq_start,freq_end]
 channelwidth=(freq_end-freq_start)/nchan
 halfwidth=channelwidth/2

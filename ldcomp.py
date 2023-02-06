@@ -118,7 +118,7 @@ else:
 			info.pop('zchan')
 	zchan=[]
 #
-freq_start,freq_end=np.float64(info['freq_start']),np.float64(info['freq_end'])
+freq_start,freq_end=info['freq_start'],info['freq_end']
 freq=(freq_start+freq_end)/2.0
 bandwidth=freq_end-freq_start
 channel_width=bandwidth/nchan
@@ -139,7 +139,7 @@ if args.dm is not np.inf:
 	command.append('-d '+str(args.dm))
 elif 'best_dm' in info.keys():
 	dmmodi=True
-	new_dm=np.float64(info['best_dm'])[0]
+	new_dm=info['best_dm'][0]
 else:
 	dmmodi=False
 command=' '.join(command)
@@ -152,15 +152,11 @@ if len(name)>3:
 		name=name[:-3]
 d1=ld.ld(name+'.ld')
 if 'history' in info.keys():
-	if type(info['history'])==list:
-		info['history'].append(command)
-		info['file_time'].append(time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()))
-	else:
-		info['history']=[info['history'],command]
-		info['file_time']=[info['file_time'],time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())]
+	info['history'].append(command)
+	info['file_time'].append(time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()))
 else:
-	info['history']=command
-	info['file_time']=time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())
+	info['history']=[command]
+	info['file_time']=[time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())]
 #
 d1.write_shape([nchan_new,nsub_new,nbin_new,npol_new])
 #
@@ -181,11 +177,11 @@ if dmmodi:
 	freq0=freq_start+channel_width/2.0
 	freq1=freq_end-channel_width/2.0
 	if 'dm' in info.keys():
-		dm_old=np.float64(info['dm'])
+		dm_old=info['dm']
 	else:
 		dm_old=0
 	disp_time=1/np.linspace(freq0,freq1,nchan0)**2*np.float64(new_dm-dm_old)*pm.dm_const
-	disp=disp_time*np.pi*2.0/np.float64(info['period'])/nperiod
+	disp=disp_time*np.pi*2.0/info['period']/nperiod
 	disp=disp-np.min(disp)
 	info['dm']=new_dm
 res=nchan0

@@ -43,13 +43,13 @@ else:
 	psrname=pr.psr(info0['psr_par']).name
 #
 if 'compressed' in info0.keys():
-	nchan0=int(info0['nchan_new'])
-	nsub0=int(info0['nsub_new'])
-	nbin0=int(info0['nbin_new'])
+	nchan0=info0['nchan_new']
+	nsub0=info0['nsub_new']
+	nbin0=info0['nbin_new']
 else:
-	nchan0=int(info0['nchan'])
-	nsub0=int(info0['nsub'])
-	nbin0=int(info0['nbin'])
+	nchan0=info0['nchan']
+	nsub0=info0['nsub']
+	nbin0=info0['nbin']
 #
 if args.zap_file:
 	command.append('-z')
@@ -63,9 +63,9 @@ if args.zap_file:
 		if np.max(zchan)>=nchan0:
 			parser.error('The zapped channel number is overrange.')
 		if 'zchan' in info0.keys():
-			info0['zchan']=str(list(set(map(int,info0['zchan'].split(','))).union(zchan)))[1:-1]
+			info0['zchan']=str(list(set(map(int,info0['zchan'])).union(zchan)))[1:-1]
 		else:
-			info0['zchan']=str(list(zchan))[1:-1]
+			info0['zchan']=zchan
 else:
 	zchan=np.int32([])
 #
@@ -90,7 +90,7 @@ if args.dm_corr:
 if args.freqtoa:
 	command.append('-F ')
 #
-freq_start0,freq_end0=np.float64(info0['freq_start']),np.float64(info0['freq_end'])
+freq_start0,freq_end0=info0['freq_start'],info0['freq_end']
 freq0=(freq_start0+freq_end0)/2.0
 channel_width0=(freq_end0-freq_start0)/nchan0
 #
@@ -121,11 +121,11 @@ def ld_check(fname,filetype='Ld file'):
 		parser.error('The pulsar recorded in '+fname+' is different from the template.')
 	#
 	if 'compressed' in finfo.keys():
-		nchan=int(finfo['nchan_new'])
-		nperiod=int(finfo['nsub_new'])
+		nchan=finfo['nchan_new']
+		nperiod=finfo['nsub_new']
 	else:
-		nchan=int(finfo['nchan'])
-		nperiod=int(finfo['nsub'])
+		nchan=finfo['nchan']
+		nperiod=finfo['nsub']
 	#
 	if args.zap_file:
 		if args.zap_template:
@@ -142,7 +142,7 @@ def ld_check(fname,filetype='Ld file'):
 	elif args.subint_range: nsub_new.append(sub_end_tmp-sub_start)
 	else: nsub_new.append(nperiod)
 	#
-	freq_start,freq_end=np.float64(finfo['freq_start']),np.float64(finfo['freq_end'])
+	freq_start,freq_end=finfo['freq_start'],finfo['freq_end']
 	if freq_start0>=freq_end or freq_end0<=freq_start: parser.error('The template has different frequency band from the data.')
 	freq=(freq_start+freq_end)/2.0
 	channel_width=(freq_end-freq_start)/nchan
@@ -223,17 +223,17 @@ if info0['mode']!='template':
 	if not args.freqtoa:
 		if not args.dm_corr and chanend0-chanstart0>1:
 			sys.stdout=open(os.devnull,'w')
-			psr=pm.psr_timing(pr.psr(info0['psr_par']),te.times(te.time(np.float64(info0['stt_time'])+np.float64(info0['length'])/86400,0)),(freq_start0+freq_end0)/2)
+			psr=pm.psr_timing(pr.psr(info0['psr_par']),te.times(te.time(info0['stt_time']+info0['length']/86400,0)),(freq_start0+freq_end0)/2)
 			sys.stdout=sys.__stdout__
 			freq_real0=np.linspace(freq_start0,freq_end0,nchan0+1)[:-1]*psr.vchange.mean()
 			if 'best_dm' in info0.keys():
-				ddm0=np.float64(info0['best_dm'][0])-np.float64(info0['dm'])
+				ddm0=info0['best_dm'][0]-info0['dm']
 				fftdata0=fft.rfft(data0,axis=1)
 				tmp=np.shape(fftdata0)[-1]
-				const=(1/freq_real0**2*pm.dm_const/np.float64(info0['period'])*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
+				const=(1/freq_real0**2*pm.dm_const/info0['period']*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
 				data0=shift(fftdata0,const*ddm0)
 			else:
-				data0[rchan],ddm0,ddm0err=dmcor(data0,freq_real0,rchan,np.float64(info0['period']),np.float64(info0['dm']))
+				data0[rchan],ddm0,ddm0err=dmcor(data0,freq_real0,rchan,info0['period'],info0['dm'])
 	data_tmp=data0[rchan]
 	if args.norm:
 		command.append('-n')
@@ -398,24 +398,24 @@ for k in np.arange(filenum):
 	sys.stdout=open(os.devnull,'w')
 	psr0=pr.psr(info['psr_par'])
 	sys.stdout=sys.__stdout__
-	period0=np.float64(info['period'])
+	period0=info['period']
 	#
 	if 'compressed' in info.keys():
-		nchan=int(info['nchan_new'])
-		nbin=int(info['nbin_new'])
-		nperiod=int(info['nsub_new'])
-		npol=int(info['npol_new'])
+		nchan=info['nchan_new']
+		nbin=info['nbin_new']
+		nperiod=info['nsub_new']
+		npol=info['npol_new']
 	else:
-		nchan=int(info['nchan'])
-		nbin=int(info['nbin'])
-		nperiod=int(info['nsub'])
-		npol=int(info['npol'])
+		nchan=info['nchan']
+		nbin=info['nbin']
+		nperiod=info['nsub']
+		npol=info['npol']
 	#
 	if args.zap_file:
 		if 'zchan' in info.keys():
-			zchan_tmp=np.array(list(set(map(int,info['zchan'].split(','))).union(zchan)))
+			zchan_tmp=np.array(list(set(map(int,info['zchan'])).union(zchan)))
 	elif 'zchan' in info.keys():
-		zchan_tmp=np.int32(info['zchan'].split(','))
+		zchan_tmp=np.int32(info['zchan'])
 	else:
 		zchan_tmp=np.int32([])
 	#
@@ -428,7 +428,7 @@ for k in np.arange(filenum):
 	else:
 		sub_s,sub_e=0,nperiod
 	#
-	freq_start,freq_end=np.float64(info['freq_start']),np.float64(info['freq_end'])
+	freq_start,freq_end=info['freq_start'],info['freq_end']
 	freq=(freq_start+freq_end)/2.0
 	channel_width=(freq_end-freq_start)/nchan
 	if args.freq_align:
@@ -442,35 +442,35 @@ for k in np.arange(filenum):
 	else:
 		rchan=np.array(list(set(range(chanstart,chanend))-set(list(zchan_tmp))))-chanstart
 	if not args.tscrunch:
-		phase0=int(info['phase0'])
-		sub_nperiod=int(info['sub_nperiod'])*np.ones(nperiod,dtype=np.float64)
-		sub_nperiod[-1]=int(info['sub_nperiod_last'])
+		phase0=info['phase0']
+		sub_nperiod=info['sub_nperiod']*np.ones(nperiod,dtype=np.float64)
+		sub_nperiod[-1]=info['sub_nperiod_last']
 		middle=sub_nperiod.cumsum()-sub_nperiod/2
-		time0=np.float64(info['length'])*(nc.chebpts1(20)+1)/2
-		psr=pm.psr_timing(psr0,te.times(te.time(np.float64(info['stt_date'])*np.ones(20,dtype=np.float64),np.float64(info['stt_sec'])+time0)),(freq_start+freq_end)/2)
+		time0=info['length']*(nc.chebpts1(20)+1)/2
+		psr=pm.psr_timing(psr0,te.times(te.time(info['stt_date']*np.ones(20,dtype=np.float64),info['stt_sec']+time0)),(freq_start+freq_end)/2)
 		phase1=psr.phase
 		chebc=nc.chebfit(time0,phase1.integer-phase1.integer[0]+phase1.offset,12)
 		chebd=nc.chebder(chebc)
-		time0=np.linspace(0,np.float64(info['length']),nperiod)
-		psr=pm.psr_timing(psr0,te.times(te.time(np.float64(info['stt_date'])*np.ones(nperiod,dtype=np.float64),np.float64(info['stt_sec'])+time0)),(freq_start+freq_end)/2)
+		time0=np.linspace(0,info['length'],nperiod)
+		psr=pm.psr_timing(psr0,te.times(te.time(info['stt_date']*np.ones(nperiod,dtype=np.float64),info['stt_sec']+time0)),(freq_start+freq_end)/2)
 		phase1=psr.phase
 		phase_start=phase1.integer[0]
 		middle_time=np.interp(middle,phase1.integer-phase0+phase1.offset,time0)[sub_s:sub_e]
-		psr1=pm.psr_timing(psr0,te.times(te.time(np.float64(info['stt_date'])*np.ones(nsub_new[k],dtype=np.float64),np.float64(info['stt_sec'])+middle_time)),(freq_start+freq_end)/2)
+		psr1=pm.psr_timing(psr0,te.times(te.time(info['stt_date']*np.ones(nsub_new[k],dtype=np.float64),info['stt_sec']+middle_time)),(freq_start+freq_end)/2)
 		middle_phase=psr1.phase
 		data1=d.period_scrunch(sub_s,sub_e)[chanstart:chanend,:,0]
 		freq_real=(np.linspace(freq_start,freq_end,nchan+1)[:-1]+channel_width/2)*psr.vchange.mean()
 		if not args.freqtoa:
 			if not args.dm_corr:
 				if 'best_dm' in info.keys():
-					ddm=np.float64(info['best_dm'][0])-np.float64(info['dm'])
-					ddmerr=np.float64(info['best_dm'][1])
+					ddm=info['best_dm'][0]-info['dm']
+					ddmerr=info['best_dm'][1]
 				else:
-					ddm,ddmerr=dmcor(data1,freq_real,rchan,period0,np.float64(info['dm']),output=0)
+					ddm,ddmerr=dmcor(data1,freq_real,rchan,period0,info['dm'],output=0)
 				#print('The relative DM from the template file to data file is '+str(ddm-ddm0))
-				dm_new=ddm+np.float64(info['dm'])
+				dm_new=ddm+info['dm']
 			else:
-				dm_new=np.float64(info['dm'])
+				dm_new=info['dm']
 				ddmerr=0
 		if info0['mode']=='template' and nsub0>1:
 			krange=info0['krange']
@@ -513,13 +513,13 @@ for k in np.arange(filenum):
 			else:
 				if args.freqtoa:
 					dp,dpe,ddm,ddmerr=toafunc(tpdata0,tpdata,freq_real)
-					dm_new=ddm+np.float64(info['dm'])
+					dm_new=ddm+info['dm']
 				else: dp,dpe=toafunc(tpdata0,tpdata)
 			dp0=dp+np.round(middle_offs-dp)
 			roots=nc.chebroots(chebc-([dp0+middle_int]+[0]*12))
 			roots=np.real(roots[np.isreal(roots)])
 			root=roots[np.argmin(np.abs(roots-middle_int*period0))]
-			toa=te.time(np.float64(info['stt_date']),root+np.float64(info['stt_sec']))
+			toa=te.time(info['stt_date'],root+info['stt_sec'])
 			period=1/nc.chebval(root,chebd)
 			toae=dpe*period
 			if output=='screen':
@@ -527,18 +527,18 @@ for k in np.arange(filenum):
 			else:
 				result[cumsub[k]+s-len(discard)]=[toa.date[0],toa.second[0],toae,dp,dpe,freq_start,freq_end,dm_new,ddmerr,period]
 	else:
-		phase0=int(info['phase0'])
-		sub_nperiod=int(info['sub_nperiod'])*np.ones(nperiod,dtype=np.float64)
-		sub_nperiod[-1]=int(info['sub_nperiod_last'])
+		phase0=info['phase0']
+		sub_nperiod=info['sub_nperiod']*np.ones(nperiod,dtype=np.float64)
+		sub_nperiod[-1]=info['sub_nperiod_last']
 		sub_nperiod_cumsum=sub_nperiod.cumsum()
 		if sub_s==0: middle=sub_nperiod_cumsum[sub_e-1]/2
 		else: middle=(sub_nperiod_cumsum[sub_s-1]+sub_nperiod_cumsum[sub_e-1])/2
-		time0=np.linspace(0,np.float64(info['length']),12)
-		phase1=pm.psr_timing(psr0,te.times(te.time(np.float64(info['stt_date'])*np.ones(12,dtype=np.float64),np.float64(info['stt_sec'])+time0)),(freq_start+freq_end)/2).phase
+		time0=np.linspace(0,info['length'],12)
+		phase1=pm.psr_timing(psr0,te.times(te.time(info['stt_date']*np.ones(12,dtype=np.float64),info['stt_sec']+time0)),(freq_start+freq_end)/2).phase
 		chebc=nc.chebfit(phase1.integer-phase0+phase1.offset,time0,7)
 		chebd=nc.chebder(chebc)
 		middle_time=nc.chebval(middle,chebc)
-		psr1=pm.psr_timing(psr0,te.times(te.time(np.float64(info['stt_date']),np.float64(info['stt_sec'])+middle_time)),(freq_start+freq_end)/2)
+		psr1=pm.psr_timing(psr0,te.times(te.time(info['stt_date'],info['stt_sec']+middle_time)),(freq_start+freq_end)/2)
 		data=d.period_scrunch(sub_s,sub_e)[chanstart:chanend,:,0]
 		if np.any(np.isnan(data)) or np.any(np.isinf(data)) or np.all(data==0):
 			discard.append(filelist[k])
@@ -547,17 +547,17 @@ for k in np.arange(filenum):
 		if not args.freqtoa:
 			if not args.dm_corr:
 				if 'best_dm' in info.keys():
-					ddm=np.float64(info['best_dm'][0])-np.float64(info['dm'])
-					ddmerr=np.float64(info['best_dm'][1])
+					ddm=info['best_dm'][0]-info['dm']
+					ddmerr=info['best_dm'][1]
 					fftdata=fft.rfft(data,axis=1)
 					tmp=np.shape(fftdata)[-1]
 					const=(1/freq_real**2*pm.dm_const/period0*np.pi*2.0).repeat(tmp).reshape(-1,tmp)*np.arange(tmp)
 					data=shift(fftdata,const*ddm)[rchan]
 				else:
-					data,ddm,ddmerr=dmcor(data,freq_real,rchan,period0,np.float64(info['dm']))
-				dm_new=ddm+np.float64(info['dm'])
+					data,ddm,ddmerr=dmcor(data,freq_real,rchan,period0,info['dm'])
+				dm_new=ddm+info['dm']
 			else:
-				dm_new=np.float64(info['dm'])
+				dm_new=info['dm']
 				ddmerr=0
 		if args.norm:
 			data-=data.mean(1).reshape(-1,1)
@@ -580,12 +580,12 @@ for k in np.arange(filenum):
 		else:
 			if args.freqtoa:
 				dp,dpe,ddm,ddmerr=toafunc(tpdata0,tpdata)
-				dm_new=ddm+np.float64(info['dm'])
+				dm_new=ddm+info['dm']
 			else: dp,dpe=toafunc(tpdata0,tpdata)
 		middle_int,middle_offs=np.divmod(middle,1)
 		dp0=dp+np.round(middle_offs-dp)
 		root=nc.chebval(dp0+middle_int,chebc)
-		toa=te.time(np.float64(info['stt_date']),root+np.float64(info['stt_sec']))
+		toa=te.time(info['stt_date'],root+info['stt_sec'])
 		period=nc.chebval(root,chebd)
 		toae=dpe*period
 		if output=='screen':
@@ -604,7 +604,7 @@ if output=='ld':
 	d1=ld.ld(name+'.ld')
 	d1.write_shape([1,nsub_new.sum()-len(discard),10,1])
 	d1.write_chan(result,0)
-	toainfo={'psr_name':psrname,'history':command,'file_time':time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime()),'mode':'ToA','method':args.algorithm}
+	toainfo={'psr_name':psrname,'history':[command],'file_time':[time.strftime('%Y-%m-%dT%H:%M:%S',time.gmtime())],'mode':'ToA','method':args.algorithm}
 	d1.write_info(toainfo)
 elif output=='txt':
 	fout=open(name,'w')

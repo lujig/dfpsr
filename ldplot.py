@@ -36,17 +36,17 @@ if info['mode']=='cal':
 	parser.error('This ld file is calibration data.')
 #
 if 'compressed' in info.keys():
-	nchan=int(info['nchan_new'])
-	nbin=int(info['nbin_new'])
-	nsub=int(info['nsub_new'])
-	npol=int(info['npol_new'])
+	nchan=info['nchan_new']
+	nbin=info['nbin_new']
+	nsub=info['nsub_new']
+	npol=info['npol_new']
 else:
-	nchan=int(info['nchan'])
-	nbin=int(info['nbin'])
-	nsub=int(info['nsub'])
-	npol=int(info['npol'])
-freq_start=np.float64(info['freq_start'])
-freq_end=np.float64(info['freq_end'])
+	nchan=info['nchan']
+	nbin=info['nbin']
+	nsub=info['nsub']
+	npol=info['npol']
+freq_start=info['freq_start']
+freq_end=info['freq_end']
 freq=(freq_start+freq_end)/2.0
 bw=freq_end-freq_start
 channel_width=(freq_end-freq_start)/nchan
@@ -124,9 +124,9 @@ if args.fdomain:
 	data=d.period_scrunch(subint_start,subint_end,chan)[:,:,polar]
 	if 'zchan' in info.keys():
 		if len(chan):
-			zchan=np.array(list(set(np.int32(info['zchan'].split(','))).intersection(chan)))-chanstart
+			zchan=np.array(list(set(np.int32(info['zchan'])).intersection(chan)))-chanstart
 		else:
-			zchan=np.int32(info['zchan'].split(','))
+			zchan=np.int32(info['zchan'])
 		zaparray=np.zeros_like(data)
 		zaparray[zchan]=True
 		data=ma.masked_array(data,mask=zaparray)
@@ -194,7 +194,7 @@ ax.set_xlabel('Pulse Phase',fontsize=30)
 ax.set_xlim(phase[0],phase[1])
 if args.title:
 	ax.text(0.0,texty,'Freq: '+str(np.round(freq,1))+' BW: '+str(np.round(bw,1)),horizontalalignment='left',verticalalignment='bottom',fontsize=15)
-	ax.text(1.0,texty,'Length: '+str(np.round(np.float64(info['length']),1)),horizontalalignment='right',verticalalignment='bottom',fontsize=15)
+	ax.text(1.0,texty,'Length: '+str(np.round(info['length'],1)),horizontalalignment='right',verticalalignment='bottom',fontsize=15)
 	if 'psr_name' in info.keys():
 		ax.text(0.5,texty,info['psr_name'],horizontalalignment='center',verticalalignment='bottom',fontsize=20)
 	else:
